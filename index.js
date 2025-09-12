@@ -2,6 +2,7 @@ import { chat, chat_metadata, event_types, eventSource, main_api, saveSettingsDe
 import { metadata_keys } from '../../../authors-note.js';
 import { extension_settings } from '../../../extensions.js';
 import { promptManager } from '../../../openai.js';
+import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
 import { delay } from '../../../utils.js';
 import { world_info_position } from '../../../world-info.js';
@@ -367,11 +368,37 @@ const init = ()=>{
     //! HACK: no event when no entries are activated, only a debug message
     const original_debug = console.debug;
     console.debug = function(...args) {
-        if (args[0] == '[WI] Found 0 world lore entries. Sorted by strategy') {
+        const triggers = [
+            '[WI] Found 0 world lore entries. Sorted by strategy',
+            '[WI] Adding 0 entries to prompt',
+        ];
+        if (triggers.includes(args[0])) {
             panel.innerHTML = 'No active entries';
             updateBadge([]);
+            currentEntryList = [];
         }
-        return original_debug.bind(this)(...args);
+        return original_debug.bind(console)(...args);
     };
+    const original_log = console.log;
+    console.log = function(...args) {
+        const triggers = [
+            '[WI] Found 0 world lore entries. Sorted by strategy',
+            '[WI] Adding 0 entries to prompt',
+        ];
+        if (triggers.includes(args[0])) {
+            panel.innerHTML = 'No active entries';
+            updateBadge([]);
+            currentEntryList = [];
+        }
+        return original_log.bind(console)(...args);
+    };
+
+    SlashCommandParser.addCommandObject(SlashCommand.fromProps({ name: 'wi-triggered',
+        callback: (args, value)=>{
+            return JSON.stringify(currentEntryList);
+        },
+        returns: 'list of triggered WI entries',
+        helpString: 'Get the list of World Info entries triggered on the last generation.',
+    }));
 };
 init();
