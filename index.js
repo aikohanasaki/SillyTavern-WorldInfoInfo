@@ -324,7 +324,6 @@ const init = ()=>{
                             title.classList.add('stwii--title');
                             if (entry.type == 'wi') {
                                 title.textContent = entry.comment?.length ? entry.comment : entry.key.join(', ');
-                                e.title += `[${entry.world}] ${entry.comment?.length ? entry.comment : entry.key.join(', ')}\n---\n${entry.content}`;
                             } else if (entry.type == 'mes') {
                                 const first = document.createElement('div'); {
                                     first.classList.add('stwii--first');
