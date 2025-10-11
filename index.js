@@ -6,7 +6,7 @@ import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
 import { delay } from '../../../utils.js';
 import { world_info_position } from '../../../world-info.js';
-import { isAdmin } from '../../../user.js';
+import { isAdmin, getCurrentUserHandle } from '../../../user.js';
 
 const strategy = {
     constant: '🔵',
@@ -113,8 +113,170 @@ const init = ()=>{
             }
             configPanel.append(mesRow);
         }
+        // Drag-to-move toggle
+        const dragRow = document.createElement('label'); {
+            dragRow.classList.add('stwii--configRow');
+            dragRow.title = 'Allow dragging the book icon to reposition it';
+            const cb = document.createElement('input'); {
+                cb.type = 'checkbox';
+                cb.checked = extension_settings.worldInfoInfo?.drag ?? false;
+                cb.addEventListener('click', ()=>{
+                    if (!extension_settings.worldInfoInfo) extension_settings.worldInfoInfo = {};
+                    const wasEnabled = !!extension_settings.worldInfoInfo.drag;
+                    extension_settings.worldInfoInfo.drag = cb.checked;
+
+                    // If enabling for the first time and no saved position, convert current visual spot
+                    const hasSaved = !!extension_settings.worldInfoInfo.triggerPos;
+                    if (cb.checked && !wasEnabled && !hasSaved) {
+                        materializeDefaultPosition();
+                    }
+                    saveSettingsDebounced();
+                });
+                dragRow.append(cb);
+            }
+            const lbl = document.createElement('div'); {
+                lbl.textContent = 'Enable drag to move';
+                dragRow.append(lbl);
+            }
+            configPanel.append(dragRow);
+        }
+        // Reset position row
+        const resetRow = document.createElement('div'); {
+            resetRow.classList.add('stwii--configRow');
+            resetRow.title = 'Reset the book icon position to default';
+            resetRow.style.userSelect = 'none';
+            const resetLbl = document.createElement('div'); {
+                resetLbl.textContent = 'Reset position';
+                resetRow.append(resetLbl);
+            }
+            resetRow.addEventListener('click', ()=>{
+                if (!extension_settings.worldInfoInfo) extension_settings.worldInfoInfo = {};
+                delete extension_settings.worldInfoInfo.triggerPos;
+                // Clear inline overrides -> back to CSS default (bottom-left)
+                trigger.style.left = '';
+                trigger.style.top = '';
+                trigger.style.right = '';
+                trigger.style.bottom = '';
+                saveSettingsDebounced();
+            });
+            configPanel.append(resetRow);
+        }
         document.body.append(configPanel);
     }
+
+    // Apply saved position if present
+    {
+        const savedPos = extension_settings.worldInfoInfo?.triggerPos;
+        if (savedPos && Number.isFinite(savedPos.left) && Number.isFinite(savedPos.top)) {
+            trigger.style.left = savedPos.left + 'px';
+            trigger.style.top = savedPos.top + 'px';
+            trigger.style.right = 'auto';
+            trigger.style.bottom = 'auto';
+        }
+    }
+
+    // Drag-to-move handlers and helpers
+    function clamp(val, min, max) {
+        return Math.max(min, Math.min(max, val));
+    }
+
+    function materializeDefaultPosition() {
+        // Convert current visual placement (bottom/left CSS) to top/left pixels
+        const rect = trigger.getBoundingClientRect();
+        const left = rect.left;
+        const top = rect.top;
+        trigger.style.left = left + 'px';
+        trigger.style.top = top + 'px';
+        trigger.style.right = 'auto';
+        trigger.style.bottom = 'auto';
+        if (!extension_settings.worldInfoInfo) extension_settings.worldInfoInfo = {};
+        extension_settings.worldInfoInfo.triggerPos = { left, top };
+    }
+
+    let dragging = false;
+    let dragStartX = 0, dragStartY = 0;
+    let baseLeft = 0, baseTop = 0;
+    let movedEnough = false;
+    let suppressNextClick = false;
+
+    function onPointerDown(e) {
+        if (!(extension_settings.worldInfoInfo?.drag)) return; // dragging disabled
+        if (e.button !== 0 && e.pointerType !== 'touch') return; // left mouse or touch
+        dragging = true;
+        movedEnough = false;
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+
+        // compute current position
+        const rect = trigger.getBoundingClientRect();
+        baseLeft = rect.left;
+        baseTop = rect.top;
+
+        trigger.style.touchAction = 'none';
+        trigger.setPointerCapture?.(e.pointerId);
+        e.preventDefault();
+    }
+
+    function onPointerMove(e) {
+        if (!dragging) return;
+        const dx = e.clientX - dragStartX;
+        const dy = e.clientY - dragStartY;
+        if (!movedEnough && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) movedEnough = true;
+
+        const newLeft = clamp(baseLeft + dx, 0, window.innerWidth - trigger.offsetWidth);
+        const newTop = clamp(baseTop + dy, 0, window.innerHeight - trigger.offsetHeight);
+
+        // switch to top/left based positioning
+        trigger.style.left = newLeft + 'px';
+        trigger.style.top = newTop + 'px';
+        trigger.style.right = 'auto';
+        trigger.style.bottom = 'auto';
+    }
+
+    function endDrag(e) {
+        if (!dragging) return;
+        dragging = false;
+        trigger.releasePointerCapture?.(e.pointerId);
+        trigger.style.touchAction = '';
+
+        // persist if moved
+        if (movedEnough) {
+            const rect = trigger.getBoundingClientRect();
+            if (!extension_settings.worldInfoInfo) extension_settings.worldInfoInfo = {};
+            extension_settings.worldInfoInfo.triggerPos = { left: rect.left, top: rect.top };
+            saveSettingsDebounced();
+            suppressNextClick = true;
+            setTimeout(() => suppressNextClick = false, 250);
+        }
+    }
+
+    trigger.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', endDrag);
+    window.addEventListener('pointercancel', endDrag);
+
+    // Prevent click toggle if a drag just occurred (capture phase)
+    trigger.addEventListener('click', (e) => {
+        if (suppressNextClick) {
+            e.stopImmediatePropagation();
+            e.preventDefault();
+        }
+    }, true);
+
+    // Ensure the saved position stays visible on resize
+    window.addEventListener('resize', () => {
+        const pos = extension_settings.worldInfoInfo?.triggerPos;
+        if (!pos) return;
+        const clampedLeft = clamp(pos.left, 0, window.innerWidth - trigger.offsetWidth);
+        const clampedTop = clamp(pos.top, 0, window.innerHeight - trigger.offsetHeight);
+        if (clampedLeft !== pos.left || clampedTop !== pos.top) {
+            pos.left = clampedLeft;
+            pos.top = clampedTop;
+            trigger.style.left = clampedLeft + 'px';
+            trigger.style.top = clampedTop + 'px';
+            saveSettingsDebounced();
+        }
+    });
 
     let entries = [];
 
@@ -174,10 +336,38 @@ const init = ()=>{
         const isMes = extension_settings.worldInfoInfo?.mes ?? true;
         panel.innerHTML = '';
         const adminBypass = isAdmin();
+
+        // Panel-only per-user visibility for Z- lorebooks.
+        // - Exempt "9Z Universal Commands" (visible to everyone)
+        // - Z-<handle>-* is visible only to matching user (admins see all)
+        // - Other 9Z remain hidden for non-admins
+        const norm = (s) => (typeof s === 'string' ? s : '').trim().toLowerCase();
+
+        // Extract single handle after "Z-", e.g. "Z-alice-..." => "alice"
+        // Allows "Z-alice" (no trailing dash) as well.
+        const extractZHandle = (world) => {
+            const m = norm(world).match(/^z-([^-\s]+)(?:-|$)/);
+            return m ? m[1] : null;
+        };
+
+        // Provided by the host app; fallback to empty if unavailable.
+        const currentHandle = (typeof getCurrentUserHandle === 'function' ? getCurrentUserHandle() : '')
+            .trim()
+            .toLowerCase();
+
         const isHiddenWorld = (w)=> {
-            const s = (typeof w === 'string' ? w : '').trim().toLowerCase();
-            if (s === '9z universal commands') return false;
-            return s.startsWith('z-') || s.startsWith('9z');
+            const s = norm(w);
+            if (s === '9z universal commands') return false; // exemption
+
+            // Per-user visibility for Z- lorebooks:
+            const h = extractZHandle(s);
+            if (h) {
+                // Hide if the embedded handle does not match the current user
+                return h !== currentHandle;
+            }
+
+            // Keep other 9Z hidden for non-admins
+            return s.startsWith('9z');
         };
         let grouped;
         if (isGrouped) {
