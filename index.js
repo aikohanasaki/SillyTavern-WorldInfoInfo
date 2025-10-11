@@ -172,6 +172,7 @@ const init = ()=>{
         const isOrdered = extension_settings.worldInfoInfo?.order ?? true;
         const isMes = extension_settings.worldInfoInfo?.mes ?? true;
         panel.innerHTML = '';
+        const isZWorld = (w)=> typeof w === 'string' && w.trim().toLowerCase().startsWith('z');
         let grouped;
         if (isGrouped) {
             grouped = Object.groupBy(entryList, (it,idx)=>it.world);
@@ -189,6 +190,29 @@ const init = ()=>{
                 w.classList.add('stwii--world');
                 w.textContent = world;
                 panel.append(w);
+                if (isGrouped && isZWorld(world)) {
+                    const placeholder = document.createElement('div'); {
+                        placeholder.classList.add('stwii--entry');
+                        placeholder.title = '';
+                        const strat = document.createElement('div'); {
+                            strat.classList.add('stwii--strategy');
+                            placeholder.append(strat);
+                        }
+                        const title = document.createElement('div'); {
+                            title.classList.add('stwii--title');
+                            title.textContent = '(hidden entries)';
+                            placeholder.append(title);
+                        }
+                        const sticky = document.createElement('div'); {
+                            sticky.classList.add('stwii--sticky');
+                            sticky.textContent = '';
+                            sticky.title = '';
+                            placeholder.append(sticky);
+                        }
+                        panel.append(placeholder);
+                    }
+                    continue;
+                }
                 entries.sort((a,b)=>{
                     if (isOrdered) {
                         // order by strategy / depth / order
@@ -286,7 +310,9 @@ const init = ()=>{
                         currentDepth = depth;
                     }
                 }
+                let hadHidden = false;
                 for (const entry of entries) {
+                    if (!isGrouped && isZWorld(entry.world)) { hadHidden = true; continue; }
                     const e = document.createElement('div'); {
                         e.classList.add('stwii--entry');
                         const wipChar = [world_info_position.before, world_info_position.after];
@@ -358,6 +384,28 @@ const init = ()=>{
                             e.append(sticky);
                         }
                         panel.append(e);
+                    }
+                }
+                if (!isGrouped && hadHidden) {
+                    const placeholder = document.createElement('div'); {
+                        placeholder.classList.add('stwii--entry');
+                        placeholder.title = '';
+                        const strat = document.createElement('div'); {
+                            strat.classList.add('stwii--strategy');
+                            placeholder.append(strat);
+                        }
+                        const title = document.createElement('div'); {
+                            title.classList.add('stwii--title');
+                            title.textContent = '(hidden entries)';
+                            placeholder.append(title);
+                        }
+                        const sticky = document.createElement('div'); {
+                            sticky.classList.add('stwii--sticky');
+                            sticky.textContent = '';
+                            sticky.title = '';
+                            placeholder.append(sticky);
+                        }
+                        panel.append(placeholder);
                     }
                 }
             }
