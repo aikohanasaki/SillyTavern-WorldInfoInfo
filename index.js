@@ -172,7 +172,10 @@ const init = ()=>{
         const isOrdered = extension_settings.worldInfoInfo?.order ?? true;
         const isMes = extension_settings.worldInfoInfo?.mes ?? true;
         panel.innerHTML = '';
-        const isZWorld = (w)=> typeof w === 'string' && w.trim().toLowerCase().startsWith('z');
+        const isHiddenWorld = (w)=> {
+            const s = (typeof w === 'string' ? w : '').trim().toLowerCase();
+            return s.startsWith('z-') || s.startsWith('9z');
+        };
         let grouped;
         if (isGrouped) {
             grouped = Object.groupBy(entryList, (it,idx)=>it.world);
@@ -190,7 +193,7 @@ const init = ()=>{
                 w.classList.add('stwii--world');
                 w.textContent = world;
                 panel.append(w);
-                if (isGrouped && isZWorld(world)) {
+                if (isGrouped && isHiddenWorld(world)) {
                     const placeholder = document.createElement('div'); {
                         placeholder.classList.add('stwii--entry');
                         placeholder.title = '';
@@ -312,7 +315,7 @@ const init = ()=>{
                 }
                 let hadHidden = false;
                 for (const entry of entries) {
-                    if (!isGrouped && isZWorld(entry.world)) { hadHidden = true; continue; }
+                    if (!isGrouped && isHiddenWorld(entry.world)) { hadHidden = true; continue; }
                     const e = document.createElement('div'); {
                         e.classList.add('stwii--entry');
                         const wipChar = [world_info_position.before, world_info_position.after];
