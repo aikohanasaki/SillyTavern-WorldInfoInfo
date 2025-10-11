@@ -6,6 +6,7 @@ import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
 import { delay } from '../../../utils.js';
 import { world_info_position } from '../../../world-info.js';
+import { isAdmin } from './user.js';
 
 const strategy = {
     constant: '🔵',
@@ -172,6 +173,7 @@ const init = ()=>{
         const isOrdered = extension_settings.worldInfoInfo?.order ?? true;
         const isMes = extension_settings.worldInfoInfo?.mes ?? true;
         panel.innerHTML = '';
+        const adminBypass = isAdmin();
         const isHiddenWorld = (w)=> {
             const s = (typeof w === 'string' ? w : '').trim().toLowerCase();
             return s.startsWith('z-') || s.startsWith('9z');
@@ -193,7 +195,7 @@ const init = ()=>{
                 w.classList.add('stwii--world');
                 w.textContent = world;
                 panel.append(w);
-                if (isGrouped && isHiddenWorld(world)) {
+                if (!adminBypass && isGrouped && isHiddenWorld(world)) {
                     const placeholder = document.createElement('div'); {
                         placeholder.classList.add('stwii--entry');
                         placeholder.title = '';
@@ -315,7 +317,7 @@ const init = ()=>{
                 }
                 let hadHidden = false;
                 for (const entry of entries) {
-                    if (!isGrouped && isHiddenWorld(entry.world)) { hadHidden = true; continue; }
+                    if (!adminBypass && !isGrouped && isHiddenWorld(entry.world)) { hadHidden = true; continue; }
                     const e = document.createElement('div'); {
                         e.classList.add('stwii--entry');
                         const wipChar = [world_info_position.before, world_info_position.after];
@@ -389,7 +391,7 @@ const init = ()=>{
                         panel.append(e);
                     }
                 }
-                if (!isGrouped && hadHidden) {
+                if (!adminBypass && !isGrouped && hadHidden) {
                     const placeholder = document.createElement('div'); {
                         placeholder.classList.add('stwii--entry');
                         placeholder.title = '';
