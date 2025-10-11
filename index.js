@@ -176,6 +176,7 @@ const init = ()=>{
         const adminBypass = isAdmin();
         const isHiddenWorld = (w)=> {
             const s = (typeof w === 'string' ? w : '').trim().toLowerCase();
+            if (s === '9z universal commands') return false;
             return s.startsWith('z-') || s.startsWith('9z');
         };
         let grouped;
