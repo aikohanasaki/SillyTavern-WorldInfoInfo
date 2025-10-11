@@ -6,7 +6,7 @@ import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
 import { delay } from '../../../utils.js';
 import { world_info_position } from '../../../world-info.js';
-import { isAdmin } from './user.js';
+import { isAdmin } from '../../../user.js';
 
 const strategy = {
     constant: '🔵',
