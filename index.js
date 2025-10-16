@@ -33,10 +33,12 @@ const init = ()=>{
         trigger.title = 'Active WI\n---\nright click for options';
         trigger.addEventListener('click', ()=>{
             panel.classList.toggle('stwii--isActive');
+            requestAnimationFrame(ensurePanelsVisible);
         });
         trigger.addEventListener('contextmenu', (evt)=>{
             evt.preventDefault();
             configPanel.classList.toggle('stwii--isActive');
+            requestAnimationFrame(ensurePanelsVisible);
         });
         document.body.append(trigger);
     }
@@ -180,6 +182,75 @@ const init = ()=>{
         return Math.max(min, Math.min(max, val));
     }
 
+    // Feature-detect CSS Anchor Positioning
+    function supportsAnchors() {
+        return CSS.supports?.('position-anchor: --x') && CSS.supports?.('anchor-name: --x');
+    }
+
+    // Measure and place a panel near the trigger, clamped to viewport
+    function placePanelNearTrigger(panelEl, triggerEl, gap = 8) {
+        if (!panelEl || !triggerEl) return;
+
+        // Temporarily show to measure when hidden
+        const wasHidden = getComputedStyle(panelEl).display === 'none';
+        if (wasHidden) {
+            panelEl.style.visibility = 'hidden';
+            panelEl.style.display = 'flex';
+        }
+
+        // Use fixed positioning for robust viewport math
+        panelEl.style.position = 'fixed';
+
+        const tr = triggerEl.getBoundingClientRect();
+        const pw = panelEl.offsetWidth || 300;
+        const ph = panelEl.offsetHeight || 200;
+
+        // Prefer right side, flip to left if overflowing
+        let left = tr.right + gap;
+        if (left + pw > window.innerWidth - 4) {
+            left = tr.left - pw - gap;
+        }
+        left = clamp(left, 4, Math.max(4, window.innerWidth - pw - 4));
+
+        // Align top with trigger, clamp vertically
+        let top = clamp(tr.top, 4, Math.max(4, window.innerHeight - ph - 4));
+
+        // Apply placement
+        panelEl.style.left = left + 'px';
+        panelEl.style.top = top + 'px';
+        panelEl.style.right = 'auto';
+        panelEl.style.bottom = 'auto';
+
+        if (wasHidden) {
+            panelEl.style.visibility = '';
+            panelEl.style.display = ''; // back to CSS control (.stwii--isActive)
+        }
+    }
+
+    // Ensure visible placement for panels when toggled/dragged/resized
+    function ensurePanelsVisible() {
+        // If anchors are supported but render offscreen due to partial/buggy support, clamp anyway
+        const checkAndClampIfOffscreen = (el) => {
+            if (!el || !el.classList.contains('stwii--isActive')) return;
+            const r = el.getBoundingClientRect();
+            const off = (r.left < 0) || (r.right > window.innerWidth) || (r.top < 0) || (r.bottom > window.innerHeight);
+            if (off) placePanelNearTrigger(el, trigger);
+        };
+
+        if (supportsAnchors()) {
+            checkAndClampIfOffscreen(panel);
+            checkAndClampIfOffscreen(configPanel);
+            return;
+        }
+
+        if (panel.classList.contains('stwii--isActive')) {
+            placePanelNearTrigger(panel, trigger);
+        }
+        if (configPanel.classList.contains('stwii--isActive')) {
+            placePanelNearTrigger(configPanel, trigger);
+        }
+    }
+
     function materializeDefaultPosition() {
         // Convert current visual placement (bottom/left CSS) to top/left pixels
         const rect = trigger.getBoundingClientRect();
@@ -248,6 +319,9 @@ const init = ()=>{
             suppressNextClick = true;
             setTimeout(() => suppressNextClick = false, 250);
         }
+
+        // Re-place open panels after drag
+        requestAnimationFrame(ensurePanelsVisible);
     }
 
     trigger.addEventListener('pointerdown', onPointerDown);
@@ -266,16 +340,20 @@ const init = ()=>{
     // Ensure the saved position stays visible on resize
     window.addEventListener('resize', () => {
         const pos = extension_settings.worldInfoInfo?.triggerPos;
-        if (!pos) return;
-        const clampedLeft = clamp(pos.left, 0, window.innerWidth - trigger.offsetWidth);
-        const clampedTop = clamp(pos.top, 0, window.innerHeight - trigger.offsetHeight);
-        if (clampedLeft !== pos.left || clampedTop !== pos.top) {
-            pos.left = clampedLeft;
-            pos.top = clampedTop;
-            trigger.style.left = clampedLeft + 'px';
-            trigger.style.top = clampedTop + 'px';
-            saveSettingsDebounced();
+        if (pos) {
+            const clampedLeft = clamp(pos.left, 0, window.innerWidth - trigger.offsetWidth);
+            const clampedTop = clamp(pos.top, 0, window.innerHeight - trigger.offsetHeight);
+            if (clampedLeft !== pos.left || clampedTop !== pos.top) {
+                pos.left = clampedLeft;
+                pos.top = clampedTop;
+                trigger.style.left = clampedLeft + 'px';
+                trigger.style.top = clampedTop + 'px';
+                saveSettingsDebounced();
+            }
         }
+
+        // After trigger potentially moved, place visible panels
+        ensurePanelsVisible();
     });
 
     let entries = [];
