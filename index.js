@@ -389,8 +389,13 @@ const init = ()=>{
     let currentChat = [];
     eventSource.on(event_types.WORLD_INFO_ACTIVATED, async(entryList)=>{
         panel.innerHTML = 'Updating...';
-        updateBadge(entryList.map(it=>`${it.world}§§§${it.uid}`));
-        for (const entry of entryList) {
+
+        // Exclude disabled entries
+        const filtered = entryList.filter(e => e?.disable !== true);
+
+        updateBadge(filtered.map(it=>`${it.world}§§§${it.uid}`));
+
+        for (const entry of filtered) {
             entry.type = 'wi';
             entry.sticky = parseInt(/**@type {string}*/(await SlashCommandParser.commands['wi-get-timed-effect'].callback(
                 {
@@ -403,8 +408,16 @@ const init = ()=>{
                 entry.uid,
             )));
         }
-        currentEntryList = [...entryList];
-        updatePanel(entryList, true);
+
+        currentEntryList = [...filtered];
+
+        if (filtered.length === 0) {
+            panel.innerHTML = 'No active entries';
+            updatePanel(filtered, true);
+            return;
+        }
+
+        updatePanel(filtered, true);
     });
 
 
@@ -591,21 +604,7 @@ const init = ()=>{
                         e.classList.add('stwii--entry');
                         const wipChar = [world_info_position.before, world_info_position.after];
                         const wipEx = [world_info_position.EMTop, world_info_position.EMBottom];
-                        // not needed after all?
-                        if (false && [...wipChar, ...wipEx].includes(entry.position)) {
-                            if (main_api == 'openai') {
-                                const pm = promptManager.getPromptCollection().collection;
-                                if (wipChar.includes(entry.position) && !pm.find(it=>it.identifier == 'charDescription')) {
-                                    e.classList.add('stwii--isBroken');
-                                    e.title = '⚠️ Not sent because position anchor is missing (Char Description)!\n';
-                                } else if (wipEx.includes(entry.position) && !pm.find(it=>it.identifier == 'dialogueExamples')) {
-                                    e.classList.add('stwii--isBroken');
-                                    e.title = '⚠️ Not sent because position anchor is missing (Example Messages)!\n';
-                                }
-                            }
-                        } else {
-                            e.title = '';
-                        }
+                        e.title = '';
                         if (entry.type == 'mes') e.classList.add('stwii--messages');
                         if (entry.type == 'note') e.classList.add('stwii--note');
                         const strat = document.createElement('div'); {
