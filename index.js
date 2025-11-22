@@ -7,6 +7,7 @@ import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.j
 import { delay } from '../../../utils.js';
 import { world_info_position } from '../../../world-info.js';
 import { isAdmin, getCurrentUserHandle } from '../../../user.js';
+import { Popup, POPUP_TYPE } from '../../../popup.js';
 
 const strategy = {
     constant: '🔵',
@@ -685,9 +686,97 @@ const init = ()=>{
         }
     };
 
+    // WI activation log capture (no changes to world-info.js)
+    const activationDrafts = new Map();
+    function parseWiUIDFromFirstArg(a0) {
+        if (typeof a0 !== 'string') return null;
+        const m = a0.match(/\[WI\]\s+Entry\s+(\d+)/);
+        return m ? Number(m[1]) : null;
+    }
+    function ensureEventArray() {
+        if (!Array.isArray(chat_metadata.stwiiActivationEvents)) chat_metadata.stwiiActivationEvents = [];
+    }
+    function upsertDraft(uid) {
+        if (!activationDrafts.has(uid)) {
+            activationDrafts.set(uid, { primary: null, secondary: [], secondaryNon: [], logic: null });
+        }
+        return activationDrafts.get(uid);
+    }
+    function handleWiDebugArgs(args) {
+        if (!args || args.length === 0) return;
+        const a0 = args[0];
+        const uid = parseWiUIDFromFirstArg(a0);
+        if (uid == null) return;
+
+        const a1 = args[1];
+        const a2 = args[2];
+
+        // Primary matched
+        if (a1 === 'activated by primary key match') {
+            const d = upsertDraft(uid);
+            if (typeof a2 === 'string') d.primary = a2;
+            return;
+        }
+
+        // Secondary logic captures
+        if (a1 === 'activated. (AND ANY) Found match secondary keyword') {
+            const d = upsertDraft(uid);
+            if (typeof a2 === 'string') d.secondary.push(a2);
+            d.logic = d.logic ?? 'AND_ANY';
+            return;
+        }
+
+        if (a1 === 'activated. (NOT ALL) Found not matching secondary keyword') {
+            const d = upsertDraft(uid);
+            if (typeof a2 === 'string') d.secondaryNon.push(a2);
+            d.logic = d.logic ?? 'NOT_ALL';
+            return;
+        }
+
+        if (a1 === 'activated. (NOT ANY) No secondary keywords found') {
+            const d = upsertDraft(uid);
+            d.logic = 'NOT_ANY';
+            return;
+        }
+
+        if (a1 === 'activated. (AND ALL) All secondary keywords found') {
+            const d = upsertDraft(uid);
+            d.logic = 'AND_ALL';
+            return;
+        }
+
+        // Final activation commit
+        if (typeof a0 === 'string' && a0.includes('activation successful, adding to prompt')) {
+            const entryObj = args[1];
+            if (!entryObj || typeof entryObj !== 'object') return;
+            const d = activationDrafts.get(uid) || { primary: null, secondary: [], secondaryNon: [], logic: null };
+
+            ensureEventArray();
+            // Fallback: if AND_ALL but no captured secondaries, include all entry secondaries
+            const sec = (d.logic === 'AND_ALL' && (!d.secondary || d.secondary.length === 0) && Array.isArray(entryObj.keysecondary))
+                ? [...entryObj.keysecondary]
+                : (d.secondary || []);
+
+            chat_metadata.stwiiActivationEvents.push({
+                ts: Date.now(),
+                world: entryObj.world,
+                uid: entryObj.uid,
+                comment: entryObj.comment ?? '',
+                primary: d.primary,
+                secondary: sec,
+                logic: d.logic,
+            });
+
+            activationDrafts.delete(uid);
+            return;
+        }
+    }
+
     //! HACK: no event when no entries are activated, only a debug message
     const original_debug = console.debug;
     console.debug = function(...args) {
+        // capture WI activation details
+        try { handleWiDebugArgs(args); } catch {}
         const triggers = [
             '[WI] Found 0 world lore entries. Sorted by strategy',
             '[WI] Adding 0 entries to prompt',
@@ -701,6 +790,8 @@ const init = ()=>{
     };
     const original_log = console.log;
     console.log = function(...args) {
+        // capture WI activation details (just in case)
+        try { handleWiDebugArgs(args); } catch {}
         const triggers = [
             '[WI] Found 0 world lore entries. Sorted by strategy',
             '[WI] Adding 0 entries to prompt',
@@ -719,6 +810,84 @@ const init = ()=>{
         },
         returns: 'list of triggered WI entries',
         helpString: 'Get the list of World Info entries triggered on the last generation.',
+    }));
+
+    // Generate a keyword frequency report from captured activation events (popup with declared options, no inline styles)
+    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+        name: 'wi-report',
+        returns: 'opens popup',
+        helpString: 'Show keywords that triggered WI entries (most frequent first) in a scrollable popup. Usage: /wi-report',
+        callback: async () => {
+            const events = Array.isArray(chat_metadata.stwiiActivationEvents) ? chat_metadata.stwiiActivationEvents : [];
+
+            // Build frequency map: keyword -> { count, entries: Set<string> }
+            const freq = new Map();
+            const fmtEntry = (e) => `${e.world}:${e.uid}${e.comment ? ` - ${e.comment}` : ''}`;
+
+            if (events.length) {
+                for (const ev of events) {
+                    const entryIdent = fmtEntry(ev);
+                    const kws = []
+                        .concat(ev.primary ? [ev.primary] : [])
+                        .concat(Array.isArray(ev.secondary) ? ev.secondary : []);
+
+                    if (!kws.length) {
+                        // Ensure at least primary placeholder contributes if somehow missing
+                        kws.push('(primary)');
+                    }
+
+                    for (const kw of kws) {
+                        if (!freq.has(kw)) freq.set(kw, { count: 0, entries: new Set() });
+                        const rec = freq.get(kw);
+                        rec.count += 1;
+                        rec.entries.add(entryIdent);
+                    }
+                }
+            }
+
+            const sorted = [...freq.entries()].sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]));
+
+            // Build popup content with classes (no inline styles)
+            const container = document.createElement('div');
+            container.classList.add('stwii-report-container');
+
+            const title = document.createElement('div');
+            title.classList.add('stwii-report-title');
+            title.textContent = 'World Info Keyword Report';
+            container.append(title);
+
+            const summary = document.createElement('div');
+            summary.classList.add('stwii-report-summary');
+            summary.textContent = events.length
+                ? `Events: ${events.length} • Unique keywords: ${sorted.length}`
+                : 'No activation events captured yet.';
+            container.append(summary);
+
+            const pre = document.createElement('pre');
+            pre.classList.add('stwii-report-pre');
+            pre.textContent = (() => {
+                if (!events.length) return 'No data available.';
+                const lines = [];
+                for (const [kw, info] of sorted) {
+                    const entryList = [...info.entries].join('; ');
+                    lines.push(`- ${kw}: ${info.count} -> ${entryList}`);
+                }
+                return lines.join('\n');
+            })();
+            container.append(pre);
+
+            // Use Popup API with allowVerticalScrolling
+            const popup = new Popup(container, POPUP_TYPE.TEXT, '', {
+                allowVerticalScrolling: true,
+                okButton: 'Close',
+                wide: true,
+                large: true,
+                leftAlign: true,
+                animation: 'fast',
+            });
+            await popup.show();
+            return 'Opened WI Report popup.';
+        },
     }));
 };
 init();

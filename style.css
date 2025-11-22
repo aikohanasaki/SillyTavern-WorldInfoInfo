@@ -198,3 +198,24 @@
     position-try-fallbacks: flip-block, flip-inline;
   }
 }
+
+/* WI Report popup content (declared styles, no inline) */
+.stwii-report-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(90vw, 1000px);
+}
+.stwii-report-title {
+  font-weight: 600;
+  font-size: 16px;
+}
+.stwii-report-summary {
+  opacity: 0.8;
+}
+.stwii-report-pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--monospace-font, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
+}
