@@ -1,6 +1,6 @@
 # SillyTavern - WorldInfo Info
 
-Forked from the amazing LenAnderson. Original at https://github.com/LenAnderson/SillyTavern-WorldInfoInfo; this version removes entry text and adds features:
+Forked from the amazing LenAnderson. Original at https://github.com/LenAnderson/SillyTavern-WorldInfoInfo; this version adds the following features:
 
 
 Click the book in the lower left corner of the screen to see the list of active entries. 
