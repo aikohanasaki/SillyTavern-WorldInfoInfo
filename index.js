@@ -748,6 +748,14 @@ function endBuildSession() {
 
     // WI activation log capture (no changes to world-info.js)
     const activationDrafts = new Map();
+    // Track last seen world for a given numeric UID (engine logs sometimes omit the world on follow-up lines)
+    const lastWorldByUid = new Map();
+
+    // Build composite key helper "World:UID" or placeholder "?:UID" when world is unknown
+    function makeDraftKey(uid, world) {
+        const w = (typeof world === 'string' && world.length) ? world : null;
+        return w ? `${w}:${uid}` : `?:${uid}`;
+    }
     function parseWiUIDFromFirstArg(a0) {
         if (typeof a0 !== 'string') return null;
         const m = a0.match(/\[WI\]\s+Entry\s+(\d+)/);
@@ -756,11 +764,23 @@ function endBuildSession() {
     function ensureEventArray() {
         if (!Array.isArray(chat_metadata.stwiiActivationEvents)) chat_metadata.stwiiActivationEvents = [];
     }
-    function upsertDraft(uid) {
-        if (!activationDrafts.has(uid)) {
-            activationDrafts.set(uid, { primary: null, secondary: [], secondaryNon: [], logic: null });
+    function upsertDraft(uid, worldOpt) {
+        // Prefer explicit world; fallback to last seen for this uid
+        const world = worldOpt || lastWorldByUid.get(uid) || null;
+
+        // If we now know the world, migrate any placeholder draft (?:uid) to composite
+        const placeholderKey = makeDraftKey(uid, null);
+        const key = makeDraftKey(uid, world);
+
+        if (world && activationDrafts.has(placeholderKey) && !activationDrafts.has(key)) {
+            activationDrafts.set(key, activationDrafts.get(placeholderKey));
+            activationDrafts.delete(placeholderKey);
         }
-        return activationDrafts.get(uid);
+
+        if (!activationDrafts.has(key)) {
+            activationDrafts.set(key, { primary: null, secondary: [], secondaryNon: [], logic: null });
+        }
+        return activationDrafts.get(key);
     }
     function handleWiDebugArgs(args) {
         if (!args || args.length === 0) return;
@@ -774,13 +794,23 @@ function endBuildSession() {
         // Normalize first arg as text (some WI logs are emitted as a single string line)
         const text0 = (typeof a0 === 'string') ? a0 : '';
 
+        // Try to capture world name on "processing" lines: "[WI] Entry N from 'World' processing ..."
+        let worldFromLine = null;
+        try {
+            const mW = text0.match(/\bfrom\s+'([^']+)'\s+processing/i);
+            if (mW && mW[1]) worldFromLine = mW[1];
+        } catch {}
+        if (worldFromLine) {
+            lastWorldByUid.set(uid, worldFromLine);
+        }
+
         // Support single-line formats to capture primary/secondary/logic from a0
         try {
             // Primary key match inline:
             // e.g. "[WI] Entry 11 activated by primary key match kidnapped"
             const mPrimLine = text0.match(/\[WI\]\s+Entry\s+\d+.*?activated by primary key match\s+(.+)/i);
             if (mPrimLine && mPrimLine[1]) {
-                const d = upsertDraft(uid);
+                const d = upsertDraft(uid, worldFromLine);
                 d.primary = mPrimLine[1].trim();
             }
 
@@ -789,7 +819,7 @@ function endBuildSession() {
             // Example: "Entry 21 Entry with primary key match custom has secondary keywords. Checking with logic logic (2) ['AND_ANY', 0]"
             const mPrimHasSecondary = text0.match(/\bEntry with primary key match\s+(.+?)\s+has secondary keywords/i);
             if (mPrimHasSecondary && mPrimHasSecondary[1]) {
-                const d = upsertDraft(uid);
+                const d = upsertDraft(uid, worldFromLine);
                 // Do not overwrite an already captured primary
                 d.primary = d.primary || mPrimHasSecondary[1].trim();
             }
@@ -797,14 +827,14 @@ function endBuildSession() {
             // Capture logic indicator when printed in the "Checking with logic logic (N) ['AND_ANY', 0]" form
             const mLogicBracket = text0.match(/Checking with logic\s+logic\s*\(\d+\)\s*\[['"]?(AND_ANY|AND_ALL|NOT_ANY|NOT_ALL)['"]?/i);
             if (mLogicBracket && mLogicBracket[1]) {
-                const d = upsertDraft(uid);
+                const d = upsertDraft(uid, worldFromLine);
                 d.logic = d.logic ?? mLogicBracket[1]; // keep underscore variant; renderer maps to display text
             }
 
             // Secondary captures inline (AND ANY)
             const mSecAndAny = text0.match(/\(AND ANY\)\s*Found match secondary keyword\s+(.+)/i);
             if (mSecAndAny && mSecAndAny[1]) {
-                const d = upsertDraft(uid);
+            const d = upsertDraft(uid, worldFromLine);
                 d.secondary.push(mSecAndAny[1].trim());
                 d.logic = d.logic ?? 'AND_ANY';
             }
@@ -812,32 +842,32 @@ function endBuildSession() {
             // Secondary captures inline (NOT ALL)
             const mSecNotAll = text0.match(/\(NOT ALL\)\s*Found not matching secondary keyword\s+(.+)/i);
             if (mSecNotAll && mSecNotAll[1]) {
-                const d = upsertDraft(uid);
+            const d = upsertDraft(uid, worldFromLine);
                 d.secondaryNon.push(mSecNotAll[1].trim());
                 d.logic = d.logic ?? 'NOT_ALL';
             }
 
             // Secondary logic inline (NOT ANY)
             if (/\(NOT ANY\)\s*No secondary keywords found/i.test(text0)) {
-                const d = upsertDraft(uid);
+            const d = upsertDraft(uid, worldFromLine);
                 d.logic = 'NOT_ANY';
             }
 
             // Secondary logic inline (AND ALL)
             if (/\(AND ALL\)\s*All secondary keywords found/i.test(text0)) {
-                const d = upsertDraft(uid);
+            const d = upsertDraft(uid, worldFromLine);
                 d.logic = 'AND_ALL';
             }
 
             // Priority winner inline
             if (/activated as prio winner/i.test(text0)) {
-                const d = upsertDraft(uid);
+            const d = upsertDraft(uid, worldFromLine);
                 d.logic = d.logic ?? 'PRIO_WINNER';
             }
 
             // Constant inline
             if (/activated because of constant/i.test(text0)) {
-                const d = upsertDraft(uid);
+            const d = upsertDraft(uid, worldFromLine);
                 d.logic = d.logic ?? 'CONSTANT';
             }
         } catch {}
@@ -894,7 +924,9 @@ function endBuildSession() {
         if (typeof a0 === 'string' && a0.includes('activation successful, adding to prompt')) {
             const entryObj = args[1];
             if (!entryObj || typeof entryObj !== 'object') return;
-            const d = activationDrafts.get(uid) || { primary: null, secondary: [], secondaryNon: [], logic: null };
+            const compKey = makeDraftKey(entryObj.uid, entryObj.world);
+            const placeholderKey = makeDraftKey(entryObj.uid, null);
+            const d = activationDrafts.get(compKey) || activationDrafts.get(placeholderKey) || { primary: null, secondary: [], secondaryNon: [], logic: null };
 
             ensureEventArray();
             // Fallback: if AND_ALL but no captured secondaries, include all entry secondaries
@@ -936,7 +968,8 @@ function endBuildSession() {
             // Track in current build session if present
             if (stwiiCurrentBuild) stwiiCurrentBuild.added.push(ev);
 
-            activationDrafts.delete(uid);
+            activationDrafts.delete(compKey);
+            activationDrafts.delete(placeholderKey);
             return;
         }
     }
@@ -1233,28 +1266,42 @@ window.STWII.destroy = function() {
                     for (const id of ids) {
                         const parts = String(id).split(':');
                         const uid = Number(parts.at(-1));
+                        const worldName = parts.slice(0, -1).join(':') || null;
                         if (!Number.isFinite(uid)) continue;
                         let idx = -1;
                         for (let k = start; k <= end; k++) {
                             const ln = logLines[k] || '';
-                            if (ln.includes(`[WI] Entry ${uid} `) && ln.includes('processing')) { idx = k; break; }
+                            const matchesUid = ln.includes(`[WI] Entry ${uid} `) && ln.includes('processing');
+                            const matchesWorld = worldName ? ln.includes(`from '${worldName}' processing`) : true;
+                            if (matchesUid && matchesWorld) { idx = k; break; }
                         }
                         if (idx < 0) continue;
-                        const lnPrim = logLines[idx + 1] || '';
+                        // Scan a short window after the processing line to robustly capture primary/logic/secondary
                         let prim = null, logic = null, sec = [];
-                        let m1 = lnPrim.match(/activated by primary key match\s+(.+)/i);
-                        if (m1 && m1[1]) prim = m1[1].trim();
-                        if (!prim) {
-                            const m2 = lnPrim.match(/Entry with primary key match\s+(.+?)\s+has secondary keywords/i);
-                            if (m2 && m2[1]) prim = m2[1].trim();
+                        for (let k2 = idx + 1; k2 <= Math.min(end, idx + 6); k2++) {
+                            const lnN = logLines[k2] || '';
+                            if (!prim) {
+                                let m1 = lnN.match(/activated by primary key match\s+(.+)/i);
+                                if (m1 && m1[1]) prim = m1[1].trim();
+                                if (!prim) {
+                                    const m2 = lnN.match(/Entry with primary key match\s+(.+?)\s+has secondary keywords/i);
+                                    if (m2 && m2[1]) prim = m2[1].trim();
+                                }
+                            }
+                            if (!logic) {
+                                const m3 = lnN.match(/activated\.\s+\((AND ANY|AND ALL|NOT ANY|NOT ALL)\)\s*(?:Found (?:match|not matching) secondary keyword\s+(.+)|No secondary keywords found|All secondary keywords found)/i);
+                                if (m3) {
+                                    logic = m3[1].replace(/\s+/g, '_');
+                                    if (m3[2]) sec.push(m3[2].trim());
+                                }
+                                // Also catch the "Checking with logic logic (N) ['AND_ANY', 0]" variant
+                                const mLogicBracket2 = lnN.match(/Checking with logic\s+logic\s*\(\d+\)\s*\[['"]?(AND_ANY|AND_ALL|NOT_ANY|NOT_ALL)['"]?/i);
+                                if (mLogicBracket2 && mLogicBracket2[1] && !logic) {
+                                    logic = mLogicBracket2[1];
+                                }
+                            }
                         }
-                        const lnSec = logLines[idx + 2] || '';
-                        const m3 = lnSec.match(/activated\.\s+\((AND ANY|AND ALL|NOT ANY|NOT ALL)\)\s*(?:Found (?:match|not matching) secondary keyword\s+(.+)|No secondary keywords found|All secondary keywords found)/i);
-                        if (m3) {
-                            logic = m3[1].replace(/\s+/g, '_');
-                            if (m3[2]) sec.push(m3[2].trim());
-                        }
-                        if (prim || sec.length) {
+                        if (prim || sec.length || logic) {
                             overrideById.set(String(id), { primary: prim || null, logic: logic || null, secondary: sec });
                         }
                     }
@@ -1262,31 +1309,44 @@ window.STWII.destroy = function() {
             }
 
             // Diagnostic fallback: parse primary/secondary by scanning all logs for the given UID
-            function parseFromLogsByUid(lines, uid) {
+            function parseFromLogsByUid(lines, uid, world) {
                 if (!Array.isArray(lines) || !Number.isFinite(uid)) return null;
                 let lastIdx = -1;
                 for (let i = 0; i < lines.length; i++) {
                     const t = lines[i] || '';
-                    if (t.includes(`[WI] Entry ${uid} `) && t.includes('processing')) {
+                    const matchesUid = t.includes(`[WI] Entry ${uid} `) && t.includes('processing');
+                    const matchesWorld = world ? t.includes(`from '${world}' processing`) : true;
+                    if (matchesUid && matchesWorld) {
                         lastIdx = i;
                     }
                 }
                 if (lastIdx < 0) return null;
-                const lnPrim = lines[lastIdx + 1] || '';
+                // Scan a small window after the processing line to extract details even if interleaved
                 let prim = null, logic = null, sec = [];
-                let m1 = lnPrim.match(/activated by primary key match\s+(.+)/i);
-                if (m1 && m1[1]) prim = m1[1].trim();
-                if (!prim) {
-                    const m2 = lnPrim.match(/Entry with primary key match\s+(.+?)\s+has secondary keywords/i);
-                    if (m2 && m2[1]) prim = m2[1].trim();
+                for (let k = lastIdx + 1; k <= Math.min(lines.length - 1, lastIdx + 6); k++) {
+                    const lnN = lines[k] || '';
+                    if (!prim) {
+                        let m1 = lnN.match(/activated by primary key match\s+(.+)/i);
+                        if (m1 && m1[1]) prim = m1[1].trim();
+                        if (!prim) {
+                            const m2 = lnN.match(/Entry with primary key match\s+(.+?)\s+has secondary keywords/i);
+                            if (m2 && m2[1]) prim = m2[1].trim();
+                        }
+                    }
+                    if (!logic) {
+                        const m3 = lnN.match(/activated\.\s+\((AND ANY|AND ALL|NOT ANY|NOT ALL)\)\s*(?:Found (?:match|not matching) secondary keyword\s+(.+)|No secondary keywords found|All secondary keywords found)/i);
+                        if (m3) {
+                            logic = m3[1].replace(/\s+/g, '_');
+                            if (m3[2]) sec.push(m3[2].trim());
+                        }
+                        // Also catch logic-only bracket line
+                        const mLogicBracket2 = lnN.match(/Checking with logic\s+logic\s*\(\d+\)\s*\[['"]?(AND_ANY|AND_ALL|NOT_ANY|NOT_ALL)['"]?/i);
+                        if (mLogicBracket2 && mLogicBracket2[1] && !logic) {
+                            logic = mLogicBracket2[1];
+                        }
+                    }
                 }
-                const lnSec = lines[lastIdx + 2] || '';
-                const m3 = lnSec.match(/activated\.\s+\((AND ANY|AND ALL|NOT ANY|NOT ALL)\)\s*(?:Found (?:match|not matching) secondary keyword\s+(.+)|No secondary keywords found|All secondary keywords found)/i);
-                if (m3) {
-                    logic = m3[1].replace(/\s+/g, '_');
-                    if (m3[2]) sec.push(m3[2].trim());
-                }
-                if (prim || sec.length) return { primary: prim || null, logic: logic || null, secondary: sec };
+                if (prim || sec.length || logic) return { primary: prim || null, logic: logic || null, secondary: sec };
                 return null;
             }
 
@@ -1307,7 +1367,7 @@ window.STWII.destroy = function() {
             if (events.length) {
                 for (const ev of events) {
                     const entryIdent = fmtEntry(ev);
-                    const ov = overrideById.get(`${ev.world}:${ev.uid}`) || parseFromLogsByUid(logLines, ev.uid) || null;
+                    const ov = overrideById.get(`${ev.world}:${ev.uid}`) || parseFromLogsByUid(logLines, ev.uid, ev.world) || null;
                     const primaryUse = ov && ov.primary ? ov.primary : (ev.primary || null);
                     const secondaryUse = ov && Array.isArray(ov.secondary) ? ov.secondary : (Array.isArray(ev.secondary) ? ev.secondary : []);
                     const kws = []
@@ -1434,7 +1494,7 @@ window.STWII.destroy = function() {
                             // Examples:
                             //  - "king AND ANY rainbow"
                             //  - "running NOT ANY circle"
-                        const ov2 = overrideById.get(`${ev.world}:${ev.uid}`) || parseFromLogsByUid(logLines, ev.uid) || null;
+                        const ov2 = overrideById.get(`${ev.world}:${ev.uid}`) || parseFromLogsByUid(logLines, ev.uid, ev.world) || null;
                         const primaryKw = ov2 && ov2.primary ? ov2.primary : (ev && ev.primary ? ev.primary : null);
                         const secRaw = ov2 && Array.isArray(ov2.secondary) ? ov2.secondary.filter(Boolean) : (ev && Array.isArray(ev.secondary) ? ev.secondary.filter(Boolean) : []);
                         const uniqSec = Array.from(new Set(secRaw));
