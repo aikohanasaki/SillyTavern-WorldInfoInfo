@@ -784,6 +784,23 @@ function endBuildSession() {
                 d.primary = mPrimLine[1].trim();
             }
 
+            // Also capture when the engine logs "Entry with primary key match X has secondary keywords"
+            // This often appears one line after "processing" and before the "(AND ANY) activated" line.
+            // Example: "Entry 21 Entry with primary key match custom has secondary keywords. Checking with logic logic (2) ['AND_ANY', 0]"
+            const mPrimHasSecondary = text0.match(/\bEntry with primary key match\s+(.+?)\s+has secondary keywords/i);
+            if (mPrimHasSecondary && mPrimHasSecondary[1]) {
+                const d = upsertDraft(uid);
+                // Do not overwrite an already captured primary
+                d.primary = d.primary || mPrimHasSecondary[1].trim();
+            }
+
+            // Capture logic indicator when printed in the "Checking with logic logic (N) ['AND_ANY', 0]" form
+            const mLogicBracket = text0.match(/Checking with logic\s+logic\s*\(\d+\)\s*\[['"]?(AND_ANY|AND_ALL|NOT_ANY|NOT_ALL)['"]?/i);
+            if (mLogicBracket && mLogicBracket[1]) {
+                const d = upsertDraft(uid);
+                d.logic = d.logic ?? mLogicBracket[1]; // keep underscore variant; renderer maps to display text
+            }
+
             // Secondary captures inline (AND ANY)
             const mSecAndAny = text0.match(/\(AND ANY\)\s*Found match secondary keyword\s+(.+)/i);
             if (mSecAndAny && mSecAndAny[1]) {
