@@ -1146,6 +1146,46 @@ window.STWII.destroy = function() {
                 }
             }
 
+            // Hide events from hidden lorebooks for non-admins (same rules as panel)
+            const adminBypass = isAdmin();
+
+            // Panel-only per-user visibility for Z- lorebooks.
+            // - Exempt "9Z Universal Commands" (visible to everyone)
+            // - Z-<handle>-* is visible only to matching user (admins see all)
+            // - Other 9Z remain hidden for non-admins
+            const norm = (s) => (typeof s === 'string' ? s : '').trim().toLowerCase();
+
+            // Extract single handle after "Z-", e.g. "Z-alice-..." => "alice"
+            // Allows "Z-alice" (no trailing dash) as well.
+            const extractZHandle = (world) => {
+                const m = norm(world).match(/^z-([^-\s]+)(?:-|$)/);
+                return m ? m[1] : null;
+            };
+
+            // Provided by the host app; fallback to empty if unavailable.
+            const currentHandle = (typeof getCurrentUserHandle === 'function' ? getCurrentUserHandle() : '')
+                .trim()
+                .toLowerCase();
+
+            const isHiddenWorld = (w)=> {
+                const s = norm(w);
+                if (s === '9z universal commands') return false; // exemption
+
+                // Per-user visibility for Z- lorebooks:
+                const h = extractZHandle(s);
+                if (h) {
+                    // Hide if the embedded handle does not match the current user
+                    return h !== currentHandle;
+                }
+
+                // Keep other 9Z hidden for non-admins
+                return s.startsWith('9z');
+            };
+
+            if (!adminBypass) {
+                events = events.filter(ev => !isHiddenWorld(ev.world));
+            }
+
             // Build keyword overrides from build logs (diagnostic parsing per loop)
             const lastBuild = (Array.isArray(chat_metadata.stwiiBuilds) && chat_metadata.stwiiBuilds.length) ? chat_metadata.stwiiBuilds.at(-1) : null;
             const logLines = Array.isArray(lastBuild?.logs) ? lastBuild.logs : [];
@@ -1295,20 +1335,39 @@ window.STWII.destroy = function() {
 
             const summary = document.createElement('div');
             summary.classList.add('stwii-report-summary');
-            const addedCount = Number.isFinite(chat_metadata.stwiiLastAddedCount)
-                ? chat_metadata.stwiiLastAddedCount
-                : events.length;
+            const addedCount = events.length;
             summary.textContent = events.length
                 ? `Entries added to WI: ${addedCount} • Unique keywords: ${sorted.length}`
                 : 'No activation events captured yet.';
             container.append(summary);
 
             // Loop breakdown (from latest non-dry run)
+            // Show counts after applying hidden-book filtering
             const loops = Array.isArray(chat_metadata.stwiiLastLoopCounts) ? chat_metadata.stwiiLastLoopCounts : [];
             if (loops.length > 0) {
                 const loopDiv = document.createElement('div');
                 loopDiv.classList.add('stwii-report-summary');
-                loopDiv.textContent = loops.map((n, i) => `Loop ${i + 1}: ${n} entries`).join(' • ');
+
+                const idsByLoop = Array.isArray(chat_metadata.stwiiLastLoopEntryIds) ? chat_metadata.stwiiLastLoopEntryIds : null;
+                const validIds = new Set(events.map(ev => `${ev.world}:${ev.uid}`));
+
+                const pieces = loops.map((n, i) => {
+                    let shown = Number.isFinite(n) ? n : 0;
+
+                    if (idsByLoop && Array.isArray(idsByLoop[i])) {
+                        // Use precise ID mapping when available, then filter by visible events
+                        shown = idsByLoop[i].filter(id => validIds.has(id)).length;
+                    } else {
+                        // Fallback approximation: slice by original loop sizes but count only visible events in that range
+                        const start = loops.slice(0, i).reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0);
+                        const end = start + (Number.isFinite(n) ? n : 0);
+                        shown = events.slice(start, end).length;
+                    }
+
+                    return `Loop ${i + 1}: ${shown} entries`;
+                });
+
+                loopDiv.textContent = pieces.join(' • ');
                 container.append(loopDiv);
             }
 
@@ -1319,7 +1378,7 @@ window.STWII.destroy = function() {
                 if (!Array.isArray(loops) || loops.length === 0) return;
 
                 const total = loops.reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0);
-                if (!Number.isFinite(total) || total <= 0 || events.length < total) return;
+                if (!Number.isFinite(total) || total <= 0) return;
 
                 let offset = 0;
                 for (let i = 0; i < loops.length; i++) {
@@ -1337,7 +1396,9 @@ window.STWII.destroy = function() {
                         const byId = new Map(events.map(ev => [`${ev.world}:${ev.uid}`, ev]));
                         list = idsByLoop[i].map(id => byId.get(id)).filter(Boolean);
                     } else {
-                        list = events.slice(offset, offset + cnt);
+                        const start = offset;
+                        const end = Math.min(events.length, start + (Number.isFinite(cnt) ? cnt : 0));
+                        list = start < end ? events.slice(start, end) : [];
                     }
 
                     const ul = document.createElement('ul');
