@@ -219,3 +219,30 @@
   word-break: break-word;
   font-family: var(--monospace-font, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
 }
+
+.stwii-report-subtitle {
+  margin-top: 6px;
+  font-weight: 600;
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+.stwii-report-drawer {
+  margin: 0;
+  padding: 0;
+}
+
+.stwii-report-drawer > summary {
+  cursor: pointer;
+  opacity: 0.9;
+}
+
+.stwii-report-drawer[open] > summary {
+  opacity: 1;
+}
+
+.stwii-report-drawer > ul {
+  margin: 6px 0 0 1.25em;
+  padding: 0;
+  list-style: disc;
+}

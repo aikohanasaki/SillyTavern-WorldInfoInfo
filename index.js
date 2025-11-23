@@ -686,6 +686,21 @@ const init = ()=>{
         }
     };
 
+    // Build session tracking based on engine markers
+    let stwiiCurrentBuild = null;
+    // Per-run loop counts (for latest non-dry run), and dry-run flag
+    let stwiiCurrentLoopCounts = null;
+    let stwiiDryRunActive = false;
+    function startBuildSession() {
+        stwiiCurrentBuild = { startedAt: Date.now(), added: [] };
+    }
+    function endBuildSession() {
+        if (!stwiiCurrentBuild) return;
+        if (!Array.isArray(chat_metadata.stwiiBuilds)) chat_metadata.stwiiBuilds = [];
+        chat_metadata.stwiiBuilds.push(stwiiCurrentBuild);
+        stwiiCurrentBuild = null;
+    }
+
     // WI activation log capture (no changes to world-info.js)
     const activationDrafts = new Map();
     function parseWiUIDFromFirstArg(a0) {
@@ -745,6 +760,20 @@ const init = ()=>{
             return;
         }
 
+        // Priority winner (inclusion group) capture
+        if (typeof a1 === 'string' && a1.startsWith('activated as prio winner')) {
+            const d = upsertDraft(uid);
+            d.logic = d.logic ?? 'PRIO_WINNER';
+            return;
+        }
+
+        // Constant activation message (legacy/supportive)
+        if (typeof a1 === 'string' && a1.startsWith('activated because of constant')) {
+            const d = upsertDraft(uid);
+            d.logic = d.logic ?? 'CONSTANT';
+            return;
+        }
+
         // Final activation commit
         if (typeof a0 === 'string' && a0.includes('activation successful, adding to prompt')) {
             const entryObj = args[1];
@@ -757,15 +786,30 @@ const init = ()=>{
                 ? [...entryObj.keysecondary]
                 : (d.secondary || []);
 
-            chat_metadata.stwiiActivationEvents.push({
+            const ev = {
                 ts: Date.now(),
                 world: entryObj.world,
                 uid: entryObj.uid,
                 comment: entryObj.comment ?? '',
+                constant: entryObj.constant === true,
+                vectorized: entryObj.vectorized === true,
                 primary: d.primary,
                 secondary: sec,
                 logic: d.logic,
-            });
+                reason: (() => {
+                    if (entryObj.constant === true) return 'constant';
+                    if (typeof d.primary === 'string' && d.primary.length) return 'primary';
+                    if (['AND_ANY','AND_ALL','NOT_ANY','NOT_ALL'].includes(d.logic)) return 'secondary';
+                    if (entryObj.vectorized === true) return 'vector';
+                    if (d.logic === 'PRIO_WINNER') return 'prio_winner';
+                    return 'other';
+                })(),
+            };
+
+            chat_metadata.stwiiActivationEvents.push(ev);
+
+            // Track in current build session if present
+            if (stwiiCurrentBuild) stwiiCurrentBuild.added.push(ev);
 
             activationDrafts.delete(uid);
             return;
@@ -777,6 +821,42 @@ const init = ()=>{
     console.debug = function(...args) {
         // capture WI activation details
         try { handleWiDebugArgs(args); } catch {}
+
+        // Track build session boundaries and capture counts (ignore DRY RUNs)
+        try {
+            const first = String(args[0] ?? '');
+            const asText = args.map(a => (typeof a === 'string' ? a : '')).join(' ');
+
+            // Start/end markers
+            if (first.includes('--- BUILDING PROMPT ---')) startBuildSession();
+            if (first.includes('--- DONE ---')) endBuildSession();
+
+            // Detect WI scan start to reset loop counts; track DRY RUNs
+            if (asText.includes('[WI] --- START WI SCAN')) {
+                stwiiDryRunActive = asText.includes('(DRY RUN)');
+                stwiiCurrentLoopCounts = [];
+            }
+
+            // Capture per-loop counts (non-dry run only)
+            const mLoop = asText.match(/Successfully\s+activated\s+(\d+)\s+new\s+entries\s+to\s+prompt/i);
+            if (mLoop && !stwiiDryRunActive && Array.isArray(stwiiCurrentLoopCounts)) {
+                const n = Number(mLoop[1]);
+                if (Number.isFinite(n)) stwiiCurrentLoopCounts.push(n);
+            }
+
+            // On BUILDING PROMPT, finalize loop counts for non-dry run
+            if (asText.includes('[WI] --- BUILDING PROMPT ---') && !stwiiDryRunActive && Array.isArray(stwiiCurrentLoopCounts)) {
+                chat_metadata.stwiiLastLoopCounts = [...stwiiCurrentLoopCounts];
+            }
+
+            // Capture final "Adding N entries to prompt" (ignore "Hypothetically")
+            const mAdd = asText.match(/\[\s*WI\s*\]\s+Adding\s+(\d+)\s+entries\s+to\s+prompt\b/i);
+            if (mAdd && !stwiiDryRunActive) {
+                const n = Number(mAdd[1]);
+                if (Number.isFinite(n)) chat_metadata.stwiiLastAddedCount = n;
+            }
+        } catch {}
+
         const triggers = [
             '[WI] Found 0 world lore entries. Sorted by strategy',
             '[WI] Adding 0 entries to prompt',
@@ -792,6 +872,42 @@ const init = ()=>{
     console.log = function(...args) {
         // capture WI activation details (just in case)
         try { handleWiDebugArgs(args); } catch {}
+
+        // Track build session boundaries and capture counts (ignore DRY RUNs)
+        try {
+            const first = String(args[0] ?? '');
+            const asText = args.map(a => (typeof a === 'string' ? a : '')).join(' ');
+
+            // Start/end markers
+            if (first.includes('--- BUILDING PROMPT ---')) startBuildSession();
+            if (first.includes('--- DONE ---')) endBuildSession();
+
+            // Detect WI scan start to reset loop counts; track DRY RUNs
+            if (asText.includes('[WI] --- START WI SCAN')) {
+                stwiiDryRunActive = asText.includes('(DRY RUN)');
+                stwiiCurrentLoopCounts = [];
+            }
+
+            // Capture per-loop counts (non-dry run only)
+            const mLoop = asText.match(/Successfully\s+activated\s+(\d+)\s+new\s+entries\s+to\s+prompt/i);
+            if (mLoop && !stwiiDryRunActive && Array.isArray(stwiiCurrentLoopCounts)) {
+                const n = Number(mLoop[1]);
+                if (Number.isFinite(n)) stwiiCurrentLoopCounts.push(n);
+            }
+
+            // On BUILDING PROMPT, finalize loop counts for non-dry run
+            if (asText.includes('[WI] --- BUILDING PROMPT ---') && !stwiiDryRunActive && Array.isArray(stwiiCurrentLoopCounts)) {
+                chat_metadata.stwiiLastLoopCounts = [...stwiiCurrentLoopCounts];
+            }
+
+            // Capture final "Adding N entries to prompt" (ignore "Hypothetically")
+            const mAdd = asText.match(/\[\s*WI\s*\]\s+Adding\s+(\d+)\s+entries\s+to\s+prompt\b/i);
+            if (mAdd && !stwiiDryRunActive) {
+                const n = Number(mAdd[1]);
+                if (Number.isFinite(n)) chat_metadata.stwiiLastAddedCount = n;
+            }
+        } catch {}
+
         const triggers = [
             '[WI] Found 0 world lore entries. Sorted by strategy',
             '[WI] Adding 0 entries to prompt',
@@ -818,11 +934,34 @@ const init = ()=>{
         returns: 'opens popup',
         helpString: 'Show keywords that triggered WI entries (most frequent first) in a scrollable popup. Usage: /wi-report',
         callback: async () => {
-            const events = Array.isArray(chat_metadata.stwiiActivationEvents) ? chat_metadata.stwiiActivationEvents : [];
+            // Prefer last complete build session; fallback to the last "Adding N entries" window; final fallback: all activation events
+            let events = [];
+            const hasBuilds = Array.isArray(chat_metadata.stwiiBuilds) && chat_metadata.stwiiBuilds.length;
+            if (hasBuilds && Array.isArray(chat_metadata.stwiiBuilds.at(-1)?.added) && chat_metadata.stwiiBuilds.at(-1).added.length) {
+                events = chat_metadata.stwiiBuilds.at(-1).added;
+            } else {
+                const all = Array.isArray(chat_metadata.stwiiActivationEvents) ? chat_metadata.stwiiActivationEvents : [];
+                const n = Number(chat_metadata.stwiiLastAddedCount);
+                if (Number.isFinite(n) && n > 0 && all.length >= n) {
+                    events = all.slice(-n);
+                } else {
+                    events = all;
+                }
+            }
 
             // Build frequency map: keyword -> { count, entries: Set<string> }
             const freq = new Map();
-            const fmtEntry = (e) => `${e.world}:${e.uid}${e.comment ? ` - ${e.comment}` : ''}`;
+            const sanitizeComment = (s) => typeof s === 'string'
+                ? s.replace(/\s*-\s*S[0-9][0-9A-Za-z.\-]*\s*$/, '').trim()
+                : '';
+            const fmtEntry = (e) => {
+                const c = sanitizeComment(e.comment ?? '');
+                return `${e.world}:${e.uid}${c ? ` - ${c}` : ''}`;
+            };
+
+            // Track entries that had explicit keywords and those that were primary-only
+            const entriesWithKeywords = new Set();
+            const primaryOnlyEntries = new Set();
 
             if (events.length) {
                 for (const ev of events) {
@@ -831,8 +970,11 @@ const init = ()=>{
                         .concat(ev.primary ? [ev.primary] : [])
                         .concat(Array.isArray(ev.secondary) ? ev.secondary : []);
 
-                    if (!kws.length) {
-                        // Ensure at least primary placeholder contributes if somehow missing
+                    if (kws.length > 0) {
+                        entriesWithKeywords.add(entryIdent);
+                    } else if (ev.constant !== true) {
+                        primaryOnlyEntries.add(entryIdent);
+                        // Ensure at least primary placeholder contributes if somehow missing and not a constant activation
                         kws.push('(primary)');
                     }
 
@@ -843,6 +985,14 @@ const init = ()=>{
                         rec.entries.add(entryIdent);
                     }
                 }
+            }
+
+            // Remove from "(primary)" any entries that also appeared with explicit keywords, and align its count
+            if (freq.has('(primary)')) {
+                const p = freq.get('(primary)');
+                const filtered = new Set([...p.entries].filter(e => !entriesWithKeywords.has(e)));
+                p.entries = filtered;
+                p.count = filtered.size;
             }
 
             const sorted = [...freq.entries()].sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]));
@@ -858,10 +1008,64 @@ const init = ()=>{
 
             const summary = document.createElement('div');
             summary.classList.add('stwii-report-summary');
+            const addedCount = Number.isFinite(chat_metadata.stwiiLastAddedCount)
+                ? chat_metadata.stwiiLastAddedCount
+                : events.length;
             summary.textContent = events.length
-                ? `Events: ${events.length} • Unique keywords: ${sorted.length}`
+                ? `Entries added to WI: ${addedCount} • Unique keywords: ${sorted.length}`
                 : 'No activation events captured yet.';
             container.append(summary);
+
+            // Loop breakdown (from latest non-dry run)
+            const loops = Array.isArray(chat_metadata.stwiiLastLoopCounts) ? chat_metadata.stwiiLastLoopCounts : [];
+            if (loops.length > 0) {
+                const loopDiv = document.createElement('div');
+                loopDiv.classList.add('stwii-report-summary');
+                loopDiv.textContent = loops.map((n, i) => `Loop ${i + 1}: ${n} entries`).join(' • ');
+                container.append(loopDiv);
+            }
+
+
+            // Per-loop sections (list entries by loop using last non-dry-run loop counts)
+            (function renderLoops() {
+                const loops = Array.isArray(chat_metadata.stwiiLastLoopCounts) ? chat_metadata.stwiiLastLoopCounts : [];
+                if (!Array.isArray(loops) || loops.length === 0) return;
+
+                const total = loops.reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0);
+                if (!Number.isFinite(total) || total <= 0 || events.length < total) return;
+
+                let offset = 0;
+                for (let i = 0; i < loops.length; i++) {
+                    const cnt = Number(loops[i]);
+                    if (!Number.isFinite(cnt) || cnt <= 0) continue;
+
+                    const header = document.createElement('div');
+                    header.classList.add('stwii-report-subtitle');
+                    header.textContent = `Loop ${i + 1}`;
+                    container.append(header);
+
+                    const slice = events.slice(offset, offset + cnt);
+
+                    const ul = document.createElement('ul');
+                    for (const ev of slice) {
+                        const li = document.createElement('li');
+                        li.textContent = fmtEntry(ev);
+                        if (ev && ev.constant === true) {
+                            li.style.color = 'var(--SmartThemeEmColor)';
+                        }
+                        ul.append(li);
+                    }
+                    container.append(ul);
+
+                    // paragraph break between loops
+                    const spacer = document.createElement('div');
+                    spacer.classList.add('stwii-report-summary');
+                    spacer.textContent = '';
+                    container.append(spacer);
+
+                    offset += cnt;
+                }
+            })();
 
             const pre = document.createElement('pre');
             pre.classList.add('stwii-report-pre');
