@@ -9,6 +9,30 @@ import { world_info_position } from '../../../world-info.js';
 import { isAdmin, getCurrentUserHandle } from '../../../user.js';
 import { Popup, POPUP_TYPE } from '../../../popup.js';
 
+const STWII = (window.STWII ||= {});
+STWII.MAX_ACTIVATION_EVENTS = STWII.MAX_ACTIVATION_EVENTS ?? 1000;
+STWII.MAX_BUILDS = STWII.MAX_BUILDS ?? 5;
+STWII.MAX_BUILD_LOGS = STWII.MAX_BUILD_LOGS ?? 2000;
+
+function pushBounded(arr, item, max) {
+    try {
+        arr.push(item);
+        if (arr.length > max) arr.splice(0, arr.length - max);
+    } catch {}
+}
+function trimBuilds() {
+    try {
+        const builds = chat_metadata.stwiiBuilds;
+        if (!Array.isArray(builds)) return;
+        while (builds.length > STWII.MAX_BUILDS) {
+            const removed = builds.shift();
+            if (removed && removed.runId != null && Array.isArray(chat_metadata.stwiiActivationEvents)) {
+                chat_metadata.stwiiActivationEvents = chat_metadata.stwiiActivationEvents.filter(e => e?.runId !== removed.runId);
+            }
+        }
+    } catch {}
+}
+
 const strategy = {
     constant: '🔵',
     normal: '🟢',
@@ -28,6 +52,17 @@ let generationType;
 eventSource.on(event_types.GENERATION_STARTED, (genType)=>generationType = genType);
 
 const init = ()=>{
+    if (window.STWII?.initialized) return;
+    STWII.initialized = true;
+    // One-time retention trimming on init
+    try {
+        if (Array.isArray(chat_metadata.stwiiActivationEvents) && chat_metadata.stwiiActivationEvents.length > STWII.MAX_ACTIVATION_EVENTS) {
+            chat_metadata.stwiiActivationEvents.splice(0, chat_metadata.stwiiActivationEvents.length - STWII.MAX_ACTIVATION_EVENTS);
+        }
+        if (Array.isArray(chat_metadata.stwiiBuilds)) {
+            trimBuilds();
+        }
+    } catch {}
     const trigger = document.createElement('div'); {
         trigger.classList.add('stwii--trigger');
         trigger.classList.add('fa-solid', 'fa-fw', 'fa-book-atlas');
@@ -165,6 +200,7 @@ const init = ()=>{
             configPanel.append(resetRow);
         }
         document.body.append(configPanel);
+        STWII.trigger = trigger; STWII.panel = panel; STWII.configPanel = configPanel;
     }
 
     // Apply saved position if present
@@ -697,13 +733,16 @@ const init = ()=>{
     // Currently active loop index (-1 when not within a loop)
     let stwiiActiveLoopIndex = -1;
     let stwiiDryRunActive = false;
-    function startBuildSession() {
-        stwiiCurrentBuild = { startedAt: Date.now(), added: [], logs: [] };
+function startBuildSession() {
+        STWII.currentRunId = Date.now();
+        stwiiCurrentBuild = { runId: STWII.currentRunId, startedAt: Date.now(), added: [], logs: [] };
     }
-    function endBuildSession() {
+function endBuildSession() {
         if (!stwiiCurrentBuild) return;
         if (!Array.isArray(chat_metadata.stwiiBuilds)) chat_metadata.stwiiBuilds = [];
         chat_metadata.stwiiBuilds.push(stwiiCurrentBuild);
+        // Enforce retention: last 5 builds; purge global events for dropped builds
+        trimBuilds();
         stwiiCurrentBuild = null;
     }
 
@@ -867,7 +906,9 @@ const init = ()=>{
                 })(),
             };
 
-            chat_metadata.stwiiActivationEvents.push(ev);
+            ev.runId = (stwiiCurrentBuild && stwiiCurrentBuild.runId) ? stwiiCurrentBuild.runId : (window.STWII?.currentRunId ?? null);
+            ensureEventArray();
+            pushBounded(chat_metadata.stwiiActivationEvents, ev, STWII.MAX_ACTIVATION_EVENTS);
 
             // Track per-loop event IDs if inside a loop
             if (Array.isArray(stwiiCurrentLoopEventIds) && stwiiActiveLoopIndex >= 0) {
@@ -884,6 +925,11 @@ const init = ()=>{
     }
 
     //! HACK: no event when no entries are activated, only a debug message
+    (function(){
+        const STWII = (window.STWII ||= {});
+        if (STWII.consolePatched) return;
+        STWII.origDebug = console.debug;
+        STWII.origLog = console.log;
     const original_debug = console.debug;
     console.debug = function(...args) {
         // capture WI activation details
@@ -893,7 +939,7 @@ const init = ()=>{
         try {
             const first = String(args[0] ?? '');
             const asText = args.map(a => (typeof a === 'string' ? a : '')).join(' ');
-            if (stwiiCurrentBuild && asText) stwiiCurrentBuild.logs.push(asText);
+            if (stwiiCurrentBuild && asText) pushBounded(stwiiCurrentBuild.logs, asText, STWII.MAX_BUILD_LOGS);
 
             // Start/end markers
             if (asText.includes('[WI] --- START WI SCAN') && !stwiiCurrentBuild) startBuildSession();
@@ -966,7 +1012,7 @@ const init = ()=>{
         try {
             const first = String(args[0] ?? '');
             const asText = args.map(a => (typeof a === 'string' ? a : '')).join(' ');
-            if (stwiiCurrentBuild && asText) stwiiCurrentBuild.logs.push(asText);
+            if (stwiiCurrentBuild && asText) pushBounded(stwiiCurrentBuild.logs, asText, STWII.MAX_BUILD_LOGS);
 
             // Start/end markers
             if (asText.includes('[WI] --- START WI SCAN') && !stwiiCurrentBuild) startBuildSession();
@@ -1049,6 +1095,27 @@ const init = ()=>{
         }
         return original_log.bind(console)(...args);
     };
+    STWII.unpatchConsole = function() {
+        try { console.debug = STWII.origDebug; } catch {}
+        try { console.log = STWII.origLog; } catch {}
+        STWII.consolePatched = false;
+    };
+    STWII.consolePatched = true;
+})();
+
+// Optional teardown to remove UI and unpatch console
+window.STWII.destroy = function() {
+    try { window.STWII.unpatchConsole?.(); } catch {}
+    try {
+        const t = window.STWII.trigger;
+        if (t && t.parentNode) t.parentNode.removeChild(t);
+        const p = window.STWII.panel;
+        if (p && p.parentNode) p.parentNode.removeChild(p);
+        const c = window.STWII.configPanel;
+        if (c && c.parentNode) c.parentNode.removeChild(c);
+    } catch {}
+    window.STWII.initialized = false;
+};
 
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({ name: 'wi-triggered',
         callback: (args, value)=>{
@@ -1058,7 +1125,7 @@ const init = ()=>{
         helpString: 'Get the list of World Info entries triggered on the last generation.',
     }));
 
-    // Generate a keyword frequency report from captured activation events (popup with declared options, no inline styles)
+    // Generate a keyword frequency report from captured activation events (popup with declared options)
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         name: 'wi-report',
         returns: 'opens popup',

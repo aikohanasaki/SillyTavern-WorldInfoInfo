@@ -6,7 +6,7 @@
     "js": "index.js",
     "css": "style.css",
     "author": "aikohanasaki",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "homePage": "https://github.com/aikohanasaki/SillyTavern-WorldInfoInfo",
     "description": "Display world information such as title, lorebook, and activation strategy in the chat interface."
 }
