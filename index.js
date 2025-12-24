@@ -469,19 +469,18 @@ const init = ()=>{
         // - Exempt "9Z Universal Commands" (visible to everyone)
         // - Z-<handle>-* is visible only to matching user (admins see all)
         // - Other 9Z remain hidden for non-admins
-        const norm = (s) => (typeof s === 'string' ? s : '').trim().toLowerCase();
+        const norm = (s) => (typeof s === 'string' ? s : '').trim();
 
         // Extract single handle after "Z-", e.g. "Z-alice-..." => "alice"
         // Allows "Z-alice" (no trailing dash) as well.
         const extractZHandle = (world) => {
-            const m = norm(world).match(/^z-([^-\s]+)(?:-|$)/);
+            const m = norm(world).match(/^Z-([^-\s]+)(?:-|$)/);
             return m ? m[1] : null;
         };
 
         // Provided by the host app; fallback to empty if unavailable.
         const currentHandle = (typeof getCurrentUserHandle === 'function' ? getCurrentUserHandle() : '')
-            .trim()
-            .toLowerCase();
+            .trim();
 
         const isHiddenWorld = (w)=> {
             const s = norm(w);
@@ -495,7 +494,7 @@ const init = ()=>{
             }
 
             // Keep other 9Z hidden for non-admins
-            return s.startsWith('9z');
+            return s.startsWith('9Z');
         };
         let grouped;
         if (isGrouped) {
@@ -1204,19 +1203,18 @@ window.STWII.destroy = function() {
             // - Exempt "9Z Universal Commands" (visible to everyone)
             // - Z-<handle>-* is visible only to matching user (admins see all)
             // - Other 9Z remain hidden for non-admins
-            const norm = (s) => (typeof s === 'string' ? s : '').trim().toLowerCase();
+            const norm = (s) => (typeof s === 'string' ? s : '').trim();
 
             // Extract single handle after "Z-", e.g. "Z-alice-..." => "alice"
             // Allows "Z-alice" (no trailing dash) as well.
             const extractZHandle = (world) => {
-                const m = norm(world).match(/^z-([^-\s]+)(?:-|$)/);
+                const m = norm(world).match(/^Z-([^-\s]+)(?:-|$)/);
                 return m ? m[1] : null;
             };
 
             // Provided by the host app; fallback to empty if unavailable.
             const currentHandle = (typeof getCurrentUserHandle === 'function' ? getCurrentUserHandle() : '')
-                .trim()
-                .toLowerCase();
+                .trim();
 
             const isHiddenWorld = (w)=> {
                 const s = norm(w);
@@ -1230,7 +1228,7 @@ window.STWII.destroy = function() {
                 }
 
                 // Keep other 9Z hidden for non-admins
-                return s.startsWith('9z');
+                return s.startsWith('9Z');
             };
 
             if (!adminBypass) {
