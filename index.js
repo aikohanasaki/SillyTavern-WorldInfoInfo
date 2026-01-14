@@ -220,8 +220,18 @@ const init = ()=>{
     }
 
     // Feature-detect CSS Anchor Positioning
+    // Must check position-area as well, since Firefox reports support for position-anchor/anchor-name
+    // but doesn't actually support position-area, causing incorrect positioning
     function supportsAnchors() {
-        return CSS.supports?.('position-anchor: --x') && CSS.supports?.('anchor-name: --x');
+        // Firefox has buggy/partial support - always use JS fallback for Firefox
+        const isFirefox = /firefox/i.test(navigator.userAgent);
+        if (isFirefox) {
+            return false;
+        }
+        
+        return CSS.supports?.('position-anchor: --x') 
+            && CSS.supports?.('anchor-name: --x')
+            && CSS.supports?.('position-area: top right');
     }
 
     // Measure and place a panel near the trigger, clamped to viewport

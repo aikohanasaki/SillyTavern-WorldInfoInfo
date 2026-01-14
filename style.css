@@ -188,7 +188,9 @@
 }
 
 /* Gate anchor positioning behind feature detection */
-@supports (position-anchor: --x) {
+/* Must check position-area as well, since Firefox reports support for position-anchor/anchor-name
+   but doesn't actually support position-area, causing incorrect positioning */
+@supports (position-anchor: --x) and (position-area: top right) {
   .stwii--trigger {
     anchor-name: --stac--wiAnchor;
   }
