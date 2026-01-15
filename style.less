@@ -9,7 +9,6 @@
     z-index: 3010;
     filter: drop-shadow(2px 4px 6px black);
     display: block;
-    anchor-name: --stac--wiAnchor;
 
     &:not([data-stwii--badge-count="0"]) {
         &:hover::after { opacity: 1; }
@@ -61,9 +60,6 @@
     max-width: calc((100vw - var(--sheldWidth)) / 2 - 3.5em);
     background-color: var(--secondaryBg, var(--SmartThemeBlurTintColor));
     position: fixed;
-    position-anchor: --stac--wiAnchor;
-    position-area: top right;
-    position-try-fallbacks: flip-block, flip-inline;
     margin-bottom: -2em;
 
     &.stwii--isActive {
@@ -207,3 +203,4 @@
         transform: scale(1) translateY(0)
     }
 }
+

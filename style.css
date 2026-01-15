@@ -187,18 +187,6 @@
   }
 }
 
-/* Gate anchor positioning behind feature detection */
-@supports (position-anchor: --x) {
-  .stwii--trigger {
-    anchor-name: --stac--wiAnchor;
-  }
-  .stwii--panel {
-    position-anchor: --stac--wiAnchor;
-    position-area: top right;
-    position-try-fallbacks: flip-block, flip-inline;
-  }
-}
-
 /* WI Report popup content (declared styles, no inline) */
 .stwii-report-container {
   display: flex;

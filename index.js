@@ -219,11 +219,6 @@ const init = ()=>{
         return Math.max(min, Math.min(max, val));
     }
 
-    // Feature-detect CSS Anchor Positioning
-    function supportsAnchors() {
-        return CSS.supports?.('position-anchor: --x') && CSS.supports?.('anchor-name: --x');
-    }
-
     // Measure and place a panel near the trigger, clamped to viewport
     function placePanelNearTrigger(panelEl, triggerEl, gap = 8) {
         if (!panelEl || !triggerEl) return;
@@ -265,21 +260,8 @@ const init = ()=>{
     }
 
     // Ensure visible placement for panels when toggled/dragged/resized
+    // Always use JavaScript-based positioning for cross-browser compatibility
     function ensurePanelsVisible() {
-        // If anchors are supported but render offscreen due to partial/buggy support, clamp anyway
-        const checkAndClampIfOffscreen = (el) => {
-            if (!el || !el.classList.contains('stwii--isActive')) return;
-            const r = el.getBoundingClientRect();
-            const off = (r.left < 0) || (r.right > window.innerWidth) || (r.top < 0) || (r.bottom > window.innerHeight);
-            if (off) placePanelNearTrigger(el, trigger);
-        };
-
-        if (supportsAnchors()) {
-            checkAndClampIfOffscreen(panel);
-            checkAndClampIfOffscreen(configPanel);
-            return;
-        }
-
         if (panel.classList.contains('stwii--isActive')) {
             placePanelNearTrigger(panel, trigger);
         }
