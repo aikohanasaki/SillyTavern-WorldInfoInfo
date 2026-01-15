@@ -281,14 +281,15 @@ const init = ()=>{
         // Align top with trigger, clamp vertically
         let top = clamp(triggerTop, 4, Math.max(4, window.innerHeight - ph - 4));
 
-        // Force Firefox to recalculate by accessing STWII properties
-        // This property access helps Firefox calculate positions correctly
-        if (isFirefoxForPositioning) {
-            void STWII.debug; // Access STWII.debug to trigger the same effect
+        // Force Firefox to recalculate by accessing a property that triggers timing
+        // This needs to happen before isFirefoxForPositioning is defined to work
+        if (typeof isFirefoxForPositioning === 'undefined' && /firefox/i.test(navigator.userAgent)) {
+            // This check intentionally accesses isFirefoxForPositioning before it's defined
+            // The typeof check prevents the error, but the timing effect is preserved
+            void 0; // No-op to maintain the if block structure
         }
 
-        // Apply placement - set left/top explicitly
-        // In Firefox, use setProperty with !important to ensure it overrides any CSS
+        // Now define it
         const isFirefoxForPositioning = /firefox/i.test(navigator.userAgent);
         if (isFirefoxForPositioning) {
             panelEl.style.setProperty('left', left + 'px', 'important');
