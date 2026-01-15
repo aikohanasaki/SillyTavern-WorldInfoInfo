@@ -246,27 +246,61 @@ const init = ()=>{
         }
 
         // Use fixed positioning for robust viewport math
+        // Clear any CSS positioning properties that might interfere (especially right/top from CSS)
         panelEl.style.position = 'fixed';
-
+        panelEl.style.right = 'auto';
+        panelEl.style.bottom = 'auto';
+        // Clear left/top before reading trigger position to ensure clean state
+        panelEl.style.left = 'auto';
+        panelEl.style.top = 'auto';
+        
+        // Force a reflow to ensure Firefox has calculated positions correctly
+        void triggerEl.offsetHeight;
+        void panelEl.offsetHeight;
+        
+        // Always use getBoundingClientRect() for trigger position
+        // It returns viewport-relative coordinates which is what we need for position: fixed panels
+        // Read the position directly - getBoundingClientRect() should always return viewport coordinates
         const tr = triggerEl.getBoundingClientRect();
+        const triggerLeft = tr.left;
+        const triggerTop = tr.top;
+        const triggerWidth = tr.width || triggerEl.offsetWidth || 0;
+        const triggerHeight = tr.height || triggerEl.offsetHeight || 0;
+        
+        // Use the values from getBoundingClientRect() - they should be viewport coordinates
         const pw = panelEl.offsetWidth || 300;
         const ph = panelEl.offsetHeight || 200;
-
+        
         // Prefer right side, flip to left if overflowing
-        let left = tr.right + gap;
+        let left = triggerLeft + triggerWidth + gap;
         if (left + pw > window.innerWidth - 4) {
-            left = tr.left - pw - gap;
+            left = triggerLeft - pw - gap;
         }
         left = clamp(left, 4, Math.max(4, window.innerWidth - pw - 4));
 
         // Align top with trigger, clamp vertically
-        let top = clamp(tr.top, 4, Math.max(4, window.innerHeight - ph - 4));
+        let top = clamp(triggerTop, 4, Math.max(4, window.innerHeight - ph - 4));
 
-        // Apply placement
-        panelEl.style.left = left + 'px';
-        panelEl.style.top = top + 'px';
-        panelEl.style.right = 'auto';
-        panelEl.style.bottom = 'auto';
+        // Force Firefox to recalculate by accessing STWII properties
+        // This property access helps Firefox calculate positions correctly
+        if (isFirefoxForPositioning) {
+            void STWII.debug; // Access STWII.debug to trigger the same effect
+        }
+
+        // Apply placement - set left/top explicitly
+        // In Firefox, use setProperty with !important to ensure it overrides any CSS
+        const isFirefoxForPositioning = /firefox/i.test(navigator.userAgent);
+        if (isFirefoxForPositioning) {
+            panelEl.style.setProperty('left', left + 'px', 'important');
+            panelEl.style.setProperty('top', top + 'px', 'important');
+            panelEl.style.setProperty('right', 'auto', 'important');
+            panelEl.style.setProperty('bottom', 'auto', 'important');
+        } else {
+            panelEl.style.left = left + 'px';
+            panelEl.style.top = top + 'px';
+            panelEl.style.right = 'auto';
+            panelEl.style.bottom = 'auto';
+        }
 
         if (wasHidden) {
             panelEl.style.visibility = '';
@@ -290,12 +324,16 @@ const init = ()=>{
             return;
         }
 
-        if (panel.classList.contains('stwii--isActive')) {
-            placePanelNearTrigger(panel, trigger);
-        }
-        if (configPanel.classList.contains('stwii--isActive')) {
-            placePanelNearTrigger(configPanel, trigger);
-        }
+        // Always use requestAnimationFrame to ensure layout is complete
+        // Firefox may need extra time to calculate positions correctly
+        requestAnimationFrame(() => {
+            if (panel.classList.contains('stwii--isActive')) {
+                placePanelNearTrigger(panel, trigger);
+            }
+            if (configPanel.classList.contains('stwii--isActive')) {
+                placePanelNearTrigger(configPanel, trigger);
+            }
+        });
     }
 
     function materializeDefaultPosition() {
