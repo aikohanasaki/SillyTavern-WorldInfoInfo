@@ -225,7 +225,7 @@ const init = ()=>{
     }
 
     // Measure and place a panel near the trigger, clamped to viewport
-    function placePanelNearTrigger(panelEl, triggerEl, gap = 8) {
+    function placePanelNearTrigger(panelEl, triggerEl, gap = 0) {
         if (!panelEl || !triggerEl) return;
 
         // Temporarily show to measure when hidden
@@ -266,26 +266,36 @@ const init = ()=>{
 
     // Ensure visible placement for panels when toggled/dragged/resized
     function ensurePanelsVisible() {
-        // If anchors are supported but render offscreen due to partial/buggy support, clamp anyway
-        const checkAndClampIfOffscreen = (el) => {
-            if (!el || !el.classList.contains('stwii--isActive')) return;
-            const r = el.getBoundingClientRect();
-            const off = (r.left < 0) || (r.right > window.innerWidth) || (r.top < 0) || (r.bottom > window.innerHeight);
-            if (off) placePanelNearTrigger(el, trigger);
+        const isActive = (el) => !!el && el.classList.contains('stwii--isActive');
+        const isOffscreen = (r) => (r.left < 0) || (r.right > window.innerWidth) || (r.top < 0) || (r.bottom > window.innerHeight);
+        const rectDistancePx = (a, b) => {
+            const dx = Math.max(0, Math.max(a.left - b.right, b.left - a.right));
+            const dy = Math.max(0, Math.max(a.top - b.bottom, b.top - a.bottom));
+            return Math.hypot(dx, dy);
         };
 
-        if (supportsAnchors()) {
-            checkAndClampIfOffscreen(panel);
-            checkAndClampIfOffscreen(configPanel);
-            return;
-        }
+        // Some browsers may pass CSS.supports() but still fail to anchor; treat "far from trigger" as failure.
+        const anchorSupported = supportsAnchors();
+        const tr = trigger.getBoundingClientRect();
+        const maxAnchorDistancePx = 96;
 
-        if (panel.classList.contains('stwii--isActive')) {
-            placePanelNearTrigger(panel, trigger);
-        }
-        if (configPanel.classList.contains('stwii--isActive')) {
-            placePanelNearTrigger(configPanel, trigger);
-        }
+        const ensure = (el) => {
+            if (!isActive(el)) return;
+            const r = el.getBoundingClientRect();
+            const farFromTrigger = rectDistancePx(r, tr) > maxAnchorDistancePx;
+            if (isOffscreen(r) || (!anchorSupported) || farFromTrigger) {
+                // If we need JS placement, disable any anchor positioning that might be partially applied.
+                if (anchorSupported) {
+                    el.style.setProperty('position-anchor', 'none');
+                    el.style.setProperty('position-area', 'auto');
+                    el.style.setProperty('position-try-fallbacks', 'none');
+                }
+                placePanelNearTrigger(el, trigger);
+            }
+        };
+
+        ensure(panel);
+        ensure(configPanel);
     }
 
     function materializeDefaultPosition() {

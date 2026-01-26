@@ -196,6 +196,11 @@
     position-anchor: --stac--wiAnchor;
     position-area: top right;
     position-try-fallbacks: flip-block, flip-inline;
+    /* Let anchored positioning control the box inset; base `top/right` are fallback-only */
+    top: auto;
+    right: auto;
+    bottom: auto;
+    left: auto;
   }
 }
 
