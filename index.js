@@ -494,7 +494,7 @@ const init = ()=>{
 
         const isHiddenWorld = (w)=> {
             const s = norm(w);
-            if (s === '9z universal commands') return false; // exemption
+            if (s === '9Z Universal Commands') return false; // exemption
 
             // Per-user visibility for Z- lorebooks:
             const h = extractZHandle(s);
@@ -1228,7 +1228,7 @@ window.STWII.destroy = function() {
 
             const isHiddenWorld = (w)=> {
                 const s = norm(w);
-                if (s === '9z universal commands') return false; // exemption
+                if (s === '9Z Universal Commands') return false; // exemption
 
                 // Per-user visibility for Z- lorebooks:
                 const h = extractZHandle(s);

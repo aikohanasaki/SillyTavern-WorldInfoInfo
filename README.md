@@ -22,3 +22,4 @@ Visibility and privacy
 ![hidden lorebook](https://github.com/aikohanasaki/imagehost/blob/main/wii-listwithhide.png)
 
 ![report omits hidden books](https://github.com/aikohanasaki/imagehost/blob/main/wii-hiddenreport.png)
+
