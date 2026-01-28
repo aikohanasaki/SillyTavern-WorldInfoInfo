@@ -6,7 +6,7 @@
   opacity: 0.25;
   transition: opacity 200ms;
   cursor: pointer;
-  z-index: 3010;
+  z-index: 99999;
   filter: drop-shadow(2px 4px 6px black);
   display: block;
 }
