@@ -14,6 +14,20 @@ STWII.MAX_ACTIVATION_EVENTS = STWII.MAX_ACTIVATION_EVENTS ?? 1000;
 STWII.MAX_BUILDS = STWII.MAX_BUILDS ?? 5;
 STWII.MAX_BUILD_LOGS = STWII.MAX_BUILD_LOGS ?? 2000;
 
+function resetWiTriggerPosition(triggerEl = window.STWII?.trigger) {
+    if (!extension_settings.worldInfoInfo) extension_settings.worldInfoInfo = {};
+    delete extension_settings.worldInfoInfo.triggerPos;
+    // Clear inline overrides -> back to CSS default (bottom-left)
+    if (triggerEl) {
+        triggerEl.style.left = '';
+        triggerEl.style.top = '';
+        triggerEl.style.right = '';
+        triggerEl.style.bottom = '';
+    }
+    saveSettingsDebounced();
+}
+STWII.resetWiTriggerPosition = resetWiTriggerPosition;
+
 function pushBounded(arr, item, max) {
     try {
         arr.push(item);
@@ -188,14 +202,7 @@ const init = ()=>{
                 resetRow.append(resetLbl);
             }
             resetRow.addEventListener('click', ()=>{
-                if (!extension_settings.worldInfoInfo) extension_settings.worldInfoInfo = {};
-                delete extension_settings.worldInfoInfo.triggerPos;
-                // Clear inline overrides -> back to CSS default (bottom-left)
-                trigger.style.left = '';
-                trigger.style.top = '';
-                trigger.style.right = '';
-                trigger.style.bottom = '';
-                saveSettingsDebounced();
+                resetWiTriggerPosition(trigger);
             });
             configPanel.append(resetRow);
         }
@@ -1183,6 +1190,16 @@ window.STWII.destroy = function() {
         },
         returns: 'list of triggered WI entries',
         helpString: 'Get the list of World Info entries triggered on the last generation.',
+    }));
+
+    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+        name: 'wi-position-reset',
+        callback: () => {
+            resetWiTriggerPosition();
+            return 'Reset WI icon position.';
+        },
+        returns: 'resets WI icon position',
+        helpString: 'Reset the World Info Info book icon position (same as clicking "Reset position"). Usage: /wi-position-reset',
     }));
 
     // Generate a keyword frequency report from captured activation events (popup with declared options)

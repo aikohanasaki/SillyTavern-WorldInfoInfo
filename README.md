@@ -7,7 +7,7 @@ Click the book in the lower left corner of the screen to see the list of active 
 
 ![list of entries](https://github.com/aikohanasaki/imagehost/blob/main/wii-list.png)
 
-The floating book icon can be dragged to a different location (right-click to enable click to drag). 
+The floating book icon can be dragged to a different location (right-click to enable click to drag). To reset, use `/wi-position-reset`.
 
 ![drag-to-move](https://github.com/aikohanasaki/imagehost/blob/main/wii-dragtomove.png)
 
