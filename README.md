@@ -22,3 +22,6 @@ Visibility and privacy
 
 ![report omits hidden books](https://github.com/aikohanasaki/imagehost/blob/main/wii-hiddenreport.png)
 
+## License
+
+This project is licensed under the GNU Affero General Public License v3.0. See [LICENSE](./LICENSE).
