@@ -802,6 +802,23 @@ function endBuildSession() {
     function handleWiDebugArgs(args) {
         if (!args || args.length === 0) return;
         const a0 = args[0];
+
+        if (typeof a0 === 'string' && /\[\s*WI\s*\]\s+WORLDINFO_FORCE_ACTIVATE\s+added entry/i.test(a0)) {
+            const entryObj = args[1];
+            const forceUid = Number(entryObj?.uid);
+            if (entryObj && typeof entryObj === 'object' && Number.isFinite(forceUid)) {
+                if (typeof entryObj.world === 'string' && entryObj.world.length) {
+                    lastWorldByUid.set(forceUid, entryObj.world);
+                }
+                const d = upsertDraft(forceUid, entryObj.world);
+                d.primary = null;
+                d.secondary = [];
+                d.secondaryNon = [];
+                d.logic = 'FORCE_ACTIVATE';
+            }
+            return;
+        }
+
         const uid = parseWiUIDFromFirstArg(a0);
         if (uid == null) return;
 
@@ -964,6 +981,7 @@ function endBuildSession() {
                 logic: d.logic,
                 reason: (() => {
                     if (entryObj.constant === true) return 'constant';
+                    if (d.logic === 'FORCE_ACTIVATE') return 'force_activate';
                     if (typeof d.primary === 'string' && d.primary.length) return 'primary';
                     if (['AND_ANY','AND_ALL','NOT_ANY','NOT_ALL'].includes(d.logic)) return 'secondary';
                     if (entryObj.vectorized === true) return 'vector';
@@ -1385,6 +1403,14 @@ window.STWII.destroy = function() {
                 const c = sanitizeComment(e.comment ?? '');
                 return `${e.world}:${e.uid}${c ? ` - ${c}` : ''}`;
             };
+            const FORCE_ACTIVATED_KEYWORD = '(force activated)';
+            const isForceActivatedEvent = (ev, primaryKw = null, secondaryKws = []) => {
+                if (!ev || ev.constant === true) return false;
+                if (ev.logic === 'FORCE_ACTIVATE' || ev.reason === 'force_activate') return true;
+                const hasPrimary = typeof primaryKw === 'string' && primaryKw.length > 0;
+                const hasSecondary = Array.isArray(secondaryKws) && secondaryKws.filter(Boolean).length > 0;
+                return ev.reason === 'vector' && !hasPrimary && !hasSecondary;
+            };
 
             // Track entries that had explicit keywords and those that were primary-only
             const entriesWithKeywords = new Set();
@@ -1396,9 +1422,11 @@ window.STWII.destroy = function() {
                     const ov = overrideById.get(`${ev.world}:${ev.uid}`) || parseFromLogsByUid(logLines, ev.uid, ev.world) || null;
                     const primaryUse = ov && ov.primary ? ov.primary : (ev.primary || null);
                     const secondaryUse = ov && Array.isArray(ov.secondary) ? ov.secondary : (Array.isArray(ev.secondary) ? ev.secondary : []);
-                    const kws = []
-                        .concat(primaryUse ? [primaryUse] : [])
-                        .concat(secondaryUse);
+                    const kws = isForceActivatedEvent(ev, primaryUse, secondaryUse)
+                        ? [FORCE_ACTIVATED_KEYWORD]
+                        : []
+                            .concat(primaryUse ? [primaryUse] : [])
+                            .concat(secondaryUse);
 
                     if (kws.length > 0) {
                         entriesWithKeywords.add(entryIdent);
@@ -1537,7 +1565,9 @@ window.STWII.destroy = function() {
                         const uniqSecFiltered = prim ? uniqSec.filter(s => String(s).toLowerCase() !== String(prim).toLowerCase()) : uniqSec;
 
                         let kwText = '';
-                        if (prim && uniqSecFiltered.length) {
+                        if (isForceActivatedEvent(ev, primaryKw, secRaw)) {
+                            kwText = ` ${FORCE_ACTIVATED_KEYWORD}`;
+                        } else if (prim && uniqSecFiltered.length) {
                             // Have primary and secondaries; include op if present, otherwise comma-separate
                             if (op) {
                                 kwText = ` (${prim} ${op} ${uniqSecFiltered.join(', ')})`;
