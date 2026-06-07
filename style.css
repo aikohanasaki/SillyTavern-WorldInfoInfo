@@ -232,6 +232,32 @@
   opacity: 0.9;
 }
 
+.stwii-report-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.stwii-report-table th,
+.stwii-report-table td {
+  padding: 4px 6px;
+  border: 1px solid var(--SmartThemeBorderColor);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.stwii-report-table th {
+  background-color: var(--SmartThemeBlurTintColor);
+  font-weight: 600;
+}
+
+.stwii-report-table .stwii-report-table-count {
+  width: 4em;
+  text-align: right;
+  white-space: nowrap;
+}
+
 .stwii-report-drawer {
   margin: 0;
   padding: 0;

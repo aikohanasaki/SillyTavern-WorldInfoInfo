@@ -1504,6 +1504,63 @@ window.STWII.destroy = function() {
                 container.append(loopDiv);
             }
 
+            if (events.length && sorted.length) {
+                const freqHeader = document.createElement('div');
+                freqHeader.classList.add('stwii-report-subtitle');
+                freqHeader.textContent = 'Keyword Frequency';
+                container.append(freqHeader);
+
+                const table = document.createElement('table');
+                table.classList.add('stwii-report-table');
+
+                const thead = document.createElement('thead');
+                const headRow = document.createElement('tr');
+                for (const label of ['Keyword', 'Hits', 'Entries']) {
+                    const th = document.createElement('th');
+                    if (label === 'Hits') th.classList.add('stwii-report-table-count');
+                    th.textContent = label;
+                    headRow.append(th);
+                }
+                thead.append(headRow);
+                table.append(thead);
+
+                const tbody = document.createElement('tbody');
+                for (const [kw, rec] of sorted) {
+                    const row = document.createElement('tr');
+
+                    const keywordCell = document.createElement('td');
+                    keywordCell.textContent = kw;
+                    row.append(keywordCell);
+
+                    const hitsCell = document.createElement('td');
+                    hitsCell.classList.add('stwii-report-table-count');
+                    hitsCell.textContent = String(rec.count);
+                    row.append(hitsCell);
+
+                    const entriesCell = document.createElement('td');
+                    const entries = [...rec.entries].sort((a, b) => a.localeCompare(b));
+                    const details = document.createElement('details');
+                    details.classList.add('stwii-report-drawer');
+
+                    const detailsSummary = document.createElement('summary');
+                    detailsSummary.textContent = `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}`;
+                    details.append(detailsSummary);
+
+                    const entryList = document.createElement('ul');
+                    for (const entry of entries) {
+                        const li = document.createElement('li');
+                        li.textContent = entry;
+                        entryList.append(li);
+                    }
+                    details.append(entryList);
+                    entriesCell.append(details);
+                    row.append(entriesCell);
+
+                    tbody.append(row);
+                }
+                table.append(tbody);
+                container.append(table);
+            }
 
             // Per-loop sections (list entries by loop using last non-dry-run loop counts)
             (function renderLoops() {
