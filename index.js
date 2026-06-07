@@ -556,11 +556,13 @@ const init = ()=>{
                 entries.sort((a,b)=>{
                     if (isOrdered) {
                         // order by strategy / depth / order
-                        if (!depthPos.includes(a.position) && !depthPos.includes(b.position)) return a.position - b.position;
-                        if (depthPos.includes(a.position) && !depthPos.includes(b.position)) return 1;
-                        if (!depthPos.includes(a.position) && depthPos.includes(b.position)) return -1;
-                        if ((a.depth ?? Number.MAX_SAFE_INTEGER) < (b.depth ?? Number.MAX_SAFE_INTEGER)) return 1;
-                        if ((a.depth ?? Number.MAX_SAFE_INTEGER) > (b.depth ?? Number.MAX_SAFE_INTEGER)) return -1;
+                        const aDepthPos = depthPos.includes(a.position);
+                        const bDepthPos = depthPos.includes(b.position);
+                        if (!aDepthPos && !bDepthPos && a.position !== b.position) return a.position - b.position;
+                        if (aDepthPos && !bDepthPos) return 1;
+                        if (!aDepthPos && bDepthPos) return -1;
+                        if (aDepthPos && bDepthPos && (a.depth ?? Number.MAX_SAFE_INTEGER) < (b.depth ?? Number.MAX_SAFE_INTEGER)) return 1;
+                        if (aDepthPos && bDepthPos && (a.depth ?? Number.MAX_SAFE_INTEGER) > (b.depth ?? Number.MAX_SAFE_INTEGER)) return -1;
                         if ((a.order ?? Number.MAX_SAFE_INTEGER) > (b.order ?? Number.MAX_SAFE_INTEGER)) return 1;
                         if ((a.order ?? Number.MAX_SAFE_INTEGER) < (b.order ?? Number.MAX_SAFE_INTEGER)) return -1;
                         return (a.comment ?? a.key.join(', ')).toLowerCase().localeCompare((b.comment ?? b.key.join(', ')).toLowerCase());
