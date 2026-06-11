@@ -60,10 +60,6 @@
   background-color: var(--secondaryBg, var(--SmartThemeBlurTintColor));
   position: fixed;
   margin-bottom: -10px !important;
-  @media screen and (max-width: 1000px) {
-      top: var(--topBarBlockSize) !important;
-      margin-top: 10px !important;
-  }
 }
 .stwii--panel.stwii--isActive {
   display: flex;
