@@ -77,16 +77,27 @@ const init = ()=>{
             trimBuilds();
         }
     } catch {}
+    function closePanels() {
+        panel.classList.remove('stwii--isActive');
+        configPanel.classList.remove('stwii--isActive');
+    }
+
+    let ignoreContextMenuClick = false;
     const trigger = document.createElement('div'); {
         trigger.classList.add('stwii--trigger');
         trigger.classList.add('fa-solid', 'fa-fw', 'fa-book-atlas');
         trigger.title = 'Active WI\n---\nright click for options';
         trigger.addEventListener('click', ()=>{
-            panel.classList.toggle('stwii--isActive');
+            if (panel.classList.contains('stwii--isActive') || configPanel.classList.contains('stwii--isActive')) {
+                closePanels();
+            } else {
+                panel.classList.add('stwii--isActive');
+            }
             requestAnimationFrame(ensurePanelsVisible);
         });
         trigger.addEventListener('contextmenu', (evt)=>{
             evt.preventDefault();
+            ignoreContextMenuClick = true;
             configPanel.classList.toggle('stwii--isActive');
             requestAnimationFrame(ensurePanelsVisible);
         });
@@ -209,6 +220,26 @@ const init = ()=>{
         document.body.append(configPanel);
         STWII.trigger = trigger; STWII.panel = panel; STWII.configPanel = configPanel;
     }
+
+    // A fresh press anywhere starts a new gesture after a context menu opens.
+    document.addEventListener('pointerdown', ()=>{
+        ignoreContextMenuClick = false;
+    }, true);
+
+    // Capture taps even if another UI handler stops them from bubbling.
+    document.addEventListener('click', (evt)=>{
+        // Ignore a compatibility click from the opening long press, even if retargeted.
+        if (ignoreContextMenuClick) {
+            ignoreContextMenuClick = false;
+            evt.preventDefault();
+            evt.stopPropagation();
+            return;
+        }
+        if (trigger.contains(evt.target)) return;
+        if (!panel.classList.contains('stwii--isActive') && !configPanel.classList.contains('stwii--isActive')) return;
+        // Let settings handlers and native label/checkbox activation finish first.
+        setTimeout(closePanels, 0);
+    }, true);
 
     // Apply saved position if present
     {

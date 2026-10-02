@@ -10,6 +10,10 @@ Click the book in the lower left corner of the screen to see the list of active 
 The floating book icon can be dragged to a different location (right-click to enable dragging). To reset its position, use `/wi-position-reset`.
 ![drag-to-move](https://github.com/aikohanasaki/imagehost/blob/main/wii-dragtomove.png)
 
+On mobile, long-press the floating book icon to open its settings. On desktop, right-click it.
+
+Tap anywhere on the screen to close the active-entry list and floating settings menu, including inside either window or on the book icon. Tapping a settings option applies its change before closing the menu. Scrolling the entry list or dragging the icon keeps the windows open.
+
 🆕 `/wi-report` shows you what keywords triggered which entry during which round of recursion.
 
 ![Popup showing /wi-report](https://github.com/aikohanasaki/imagehost/blob/main/worldinfo.png)
