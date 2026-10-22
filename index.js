@@ -4,12 +4,65 @@ import { extension_settings } from '../../../extensions.js';
 import { promptManager } from '../../../openai.js';
 import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
-import { delay } from '../../../utils.js';
-import { world_info_position } from '../../../world-info.js';
+import { delay, flashHighlight } from '../../../utils.js';
+import { world_info_position, world_names, loadWorldInfo, openWorldInfoEditor } from '../../../world-info.js';
 import { isAdmin, getCurrentUserHandle } from '../../../user.js';
 import { Popup, POPUP_TYPE } from '../../../popup.js';
 
 const STWII = (window.STWII ||= {});
+let navigatingEntry = false;
+
+async function openActiveEntry(world, uid) {
+    if (navigatingEntry) return;
+    navigatingEntry = true;
+    try {
+        const entryUid = Number(uid);
+        if (!world_names.includes(world)) throw new Error('Lorebook no longer exists');
+        const data = await loadWorldInfo(world);
+        if (!data?.entries?.[entryUid]) throw new Error('Entry no longer exists');
+        openWorldInfoEditor(world);
+        const expected = String(world_names.indexOf(world));
+        const select = document.querySelector('#world_editor_select');
+        const pagination = $('#world_info_pagination');
+        const list = document.querySelector('#world_popup_entries_list');
+        const waitFor = async (predicate) => {
+            for (let i = 0; i < 100; i++) {
+                if (select?.value !== expected) throw new Error('Lorebook selection changed');
+                if (predicate()) return;
+                await delay(50);
+            }
+            throw new Error('World Info editor did not finish loading');
+        };
+        await waitFor(() => pagination.data('pagination')?.initialized &&
+            list?.querySelectorAll('.world_entry').length === pagination.pagination('getCurrentPageData')?.length);
+        const total = pagination.pagination('getTotalPage');
+        for (let page = 1; page <= total; page++) {
+            const entries = pagination.pagination('getCurrentPageData');
+            if (entries.some(entry => Number(entry.uid) === entryUid)) {
+                await waitFor(() => !!list?.querySelector(`.world_entry[uid="${entryUid}"]`));
+                const target = list.querySelector(`.world_entry[uid="${entryUid}"]`);
+                const control = target.querySelector('.inline-drawer-icon');
+                if (!control) throw new Error('Entry control unavailable');
+                if (!target.querySelector('.inline-drawer-outlet')?.offsetParent) control.click();
+                target.scrollIntoView({ block: 'center' });
+                control.focus();
+                flashHighlight($(target));
+                return;
+            }
+            if (page < total) {
+                const next = pagination.pagination('getCurrentPageNum') + 1;
+                pagination.pagination('go', next);
+                await waitFor(() => pagination.pagination('getCurrentPageNum') === next &&
+                    list?.querySelectorAll('.world_entry').length === pagination.pagination('getCurrentPageData').length);
+            }
+        }
+        throw new Error('Entry is unavailable in the editor');
+    } catch (error) {
+        toastr.warning(error.message);
+    } finally {
+        navigatingEntry = false;
+    }
+}
 STWII.MAX_ACTIVATION_EVENTS = STWII.MAX_ACTIVATION_EVENTS ?? 1000;
 STWII.MAX_BUILDS = STWII.MAX_BUILDS ?? 5;
 STWII.MAX_BUILD_LOGS = STWII.MAX_BUILD_LOGS ?? 2000;
@@ -658,6 +711,17 @@ const init = ()=>{
                     const e = document.createElement('div'); {
                         e.classList.add('stwii--entry');
                         const wipChar = [world_info_position.before, world_info_position.after];
+                        if (entry.type === 'wi') {
+                            e.classList.add('stwii--actionable');
+                            e.tabIndex = 0;
+                            e.setAttribute('role', 'button');
+                            e.addEventListener('click', () => openActiveEntry(entry.world, entry.uid));
+                            e.addEventListener('keydown', (event) => {
+                                if (event.key !== 'Enter' && event.key !== ' ') return;
+                                event.preventDefault();
+                                openActiveEntry(entry.world, entry.uid);
+                            });
+                        }
                         const wipEx = [world_info_position.EMTop, world_info_position.EMBottom];
                         e.title = '';
                         if (entry.type == 'mes') e.classList.add('stwii--messages');

@@ -78,6 +78,13 @@
 .stwii--entry:hover {
   opacity: 1;
 }
+.stwii--entry.stwii--actionable {
+  cursor: pointer;
+}
+.stwii--entry.stwii--actionable:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
 .stwii--entry.stwii--isBroken {
   background-color: rgba(255, 0, 0, 0.5);
 }
