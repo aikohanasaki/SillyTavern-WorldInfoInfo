@@ -44,8 +44,10 @@ async function openActiveEntry(world, uid) {
                 const control = target.querySelector('.inline-drawer-icon');
                 if (!control) throw new Error('Entry control unavailable');
                 if (!target.querySelector('.inline-drawer-outlet')?.offsetParent) control.click();
+                const content = target.querySelector('textarea[name="content"]');
+                if (!content) throw new Error('Entry content field unavailable');
                 target.scrollIntoView({ block: 'center' });
-                control.focus();
+                content.focus();
                 flashHighlight($(target));
                 return;
             }
